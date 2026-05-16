@@ -8,6 +8,7 @@ enum TBMonitorPacketType: UInt8 {
     case frame = 0x21
     case heartbeat = 0x30
     case teardown = 0x31
+    case cursor = 0x32
 }
 
 struct TBMonitorHelloReceiver: Codable {
@@ -42,6 +43,14 @@ struct TBMonitorHeartbeat: Codable {
 
 struct TBMonitorTeardown: Codable {
     var reason: String
+}
+
+struct TBMonitorCursor: Codable {
+    var x: Int
+    var y: Int
+    var width: Int
+    var height: Int
+    var visible: Bool
 }
 
 enum TBMonitorProtocol {

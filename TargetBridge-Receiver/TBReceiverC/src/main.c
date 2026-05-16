@@ -40,6 +40,7 @@ struct app {
     uint64_t frames;
     uint64_t last_fps_tick_ms;
     uint64_t last_fps_count;
+    uint64_t last_ip_check_ms;
     int      close_requested;
     int      have_video_frame;
 
@@ -108,6 +109,33 @@ static int extract_json_int_field(const uint8_t *payload,
     return 1;
 }
 
+static int extract_json_bool_field(const uint8_t *payload,
+                                   size_t len,
+                                   const char *key,
+                                   int *out_value) {
+    if (!payload || !key || !out_value) return 0;
+
+    const char *text = (const char *)payload;
+    const char *pos = strstr(text, key);
+    if (!pos) return 0;
+
+    pos = strchr(pos, ':');
+    if (!pos) return 0;
+    pos++;
+    while ((size_t)(pos - text) < len && (*pos == ' ' || *pos == '\t')) pos++;
+    if ((size_t)(pos - text) >= len) return 0;
+
+    if (strncmp(pos, "true", 4) == 0) {
+        *out_value = 1;
+        return 1;
+    }
+    if (strncmp(pos, "false", 5) == 0) {
+        *out_value = 0;
+        return 1;
+    }
+    return extract_json_int_field(payload, len, key, out_value);
+}
+
 /* ---- Callbacks: decoder → display ------------------------------------ */
 
 static void on_frame(const uint8_t *y, int y_stride,
@@ -115,8 +143,8 @@ static void on_frame(const uint8_t *y, int y_stride,
                      int w, int h, void *ud) {
     struct app *a = (struct app *)ud;
     a->have_video_frame = 1;
-    snprintf(a->status_text, sizeof(a->status_text), "%s", "stream attivo");
-    snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px in ricezione", w, h);
+    snprintf(a->status_text, sizeof(a->status_text), "%s", "stream active");
+    snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px receiving", w, h);
     tb_disp_render_nv12(a->disp, y, y_stride, uv, uv_stride, w, h);
     a->frames++;
 }
@@ -129,7 +157,7 @@ static void on_packet(uint8_t type, const uint8_t *payload, size_t len, void *ud
     case TB_PKT_HELLO_RECEIVER:
         extract_json_string_field(payload, len, "\"senderName\"", a->sender_text, sizeof(a->sender_text));
         if (a->sender_text[0] == '\0') {
-            snprintf(a->sender_text, sizeof(a->sender_text), "%s", "sender collegato");
+            snprintf(a->sender_text, sizeof(a->sender_text), "%s", "sender connected");
         }
         {
             char preset[64];
@@ -144,21 +172,21 @@ static void on_packet(uint8_t type, const uint8_t *payload, size_t len, void *ud
             (void)extract_json_int_field(payload, len, "\"captureHeight\"", &capture_h);
 
             if (capture_w > 0 && capture_h > 0 && preset[0] != '\0' && codec[0] != '\0') {
-                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px richiesti (%s, %s)", capture_w, capture_h, preset, codec);
+                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px requested (%s, %s)", capture_w, capture_h, preset, codec);
             } else if (capture_w > 0 && capture_h > 0 && preset[0] != '\0') {
-                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px richiesti (%s)", capture_w, capture_h, preset);
+                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px requested (%s)", capture_w, capture_h, preset);
             } else if (capture_w > 0 && capture_h > 0 && codec[0] != '\0') {
-                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px richiesti (%s)", capture_w, capture_h, codec);
+                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px requested (%s)", capture_w, capture_h, codec);
             } else if (capture_w > 0 && capture_h > 0) {
-                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px richiesti", capture_w, capture_h);
+                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px requested", capture_w, capture_h);
             }
         }
         fprintf(stderr, "[main] hello from sender\n");
-        snprintf(a->status_text, sizeof(a->status_text), "%s", "sender connesso, profilo inviato");
+        snprintf(a->status_text, sizeof(a->status_text), "%s", "sender connected, profile sent");
         break;
     case TB_PKT_CREATE_SESSION_ACK:
         fprintf(stderr, "[main] sender session ack: %.*s\n", (int)len, (const char *)payload);
-        snprintf(a->status_text, sizeof(a->status_text), "%s", "sessione accettata, attendo i frame");
+        snprintf(a->status_text, sizeof(a->status_text), "%s", "session accepted, waiting for frames");
         break;
     case TB_PKT_PARAM_SETS:
         /* tb_dec_set_param_sets is now a no-op if the sets are unchanged,
@@ -168,11 +196,26 @@ static void on_packet(uint8_t type, const uint8_t *payload, size_t len, void *ud
     case TB_PKT_FRAME:
         tb_dec_feed_frame(a->dec, payload, len);
         break;
+    case TB_PKT_CURSOR:
+        {
+            int x = 0;
+            int y = 0;
+            int w = 0;
+            int h = 0;
+            int visible = 0;
+            (void)extract_json_int_field(payload, len, "\"x\"", &x);
+            (void)extract_json_int_field(payload, len, "\"y\"", &y);
+            (void)extract_json_int_field(payload, len, "\"width\"", &w);
+            (void)extract_json_int_field(payload, len, "\"height\"", &h);
+            (void)extract_json_bool_field(payload, len, "\"visible\"", &visible);
+            tb_disp_set_cursor(a->disp, x, y, w, h, visible);
+        }
+        break;
     case TB_PKT_HEARTBEAT:
         break;
     case TB_PKT_TEARDOWN:
         fprintf(stderr, "[main] teardown requested by sender\n");
-        snprintf(a->status_text, sizeof(a->status_text), "%s", "sessione chiusa dal sender");
+        snprintf(a->status_text, sizeof(a->status_text), "%s", "session closed by sender");
         a->close_requested = 1;
         break;
     default:
@@ -184,7 +227,7 @@ static void on_packet(uint8_t type, const uint8_t *payload, size_t len, void *ud
 /* ---- Networking helpers ---------------------------------------------- */
 
 static int drain_socket(struct app *a) {
-    uint8_t buf[131072];
+    uint8_t buf[1024 * 1024];
     for (;;) {
         ssize_t n = read(a->client_fd, buf, sizeof(buf));
         if (n > 0) {
@@ -227,6 +270,18 @@ static void send_receiver_info(struct app *a) {
     struct tb_display_info info;
     if (tb_disp_get_info(a->disp, &info) < 0) return;
 
+    /* Always advertise the intended iMac target panel, not the transient
+     * SDL window/debug drawable size. Using the drawable here breaks the
+     * sender's virtual display creation path when running windowed or on
+     * scaled desktops because macOS rejects a HiDPI mode larger than the
+     * advertised backing panel. */
+    const uint32_t panel_w = 5120;
+    const uint32_t panel_h = 2880;
+    const uint32_t mode_w = 2560;
+    const uint32_t mode_h = 1440;
+    const uint32_t capture_w = 2560;
+    const uint32_t capture_h = 1440;
+
     char escaped_name[256];
     size_t out = 0;
     for (size_t i = 0; info.name[i] != '\0' && out + 2 < sizeof(escaped_name); i++) {
@@ -245,11 +300,15 @@ static void send_receiver_info(struct app *a) {
         json,
         sizeof(json),
         "{\"receiverName\":\"%s\",\"panelWidth\":%u,\"panelHeight\":%u,"
-        "\"modeWidth\":2560,\"modeHeight\":1440,\"refreshRate\":60,"
-        "\"hiDPI\":true,\"captureWidth\":2560,\"captureHeight\":1440}",
+        "\"modeWidth\":%u,\"modeHeight\":%u,\"refreshRate\":60,"
+        "\"hiDPI\":true,\"captureWidth\":%u,\"captureHeight\":%u}",
         escaped_name,
-        info.active_w,
-        info.active_h
+        panel_w,
+        panel_h,
+        mode_w,
+        mode_h,
+        capture_w,
+        capture_h
     );
     if (json_len <= 0 || (size_t)json_len >= sizeof(json)) return;
 
@@ -263,8 +322,8 @@ static void send_receiver_info(struct app *a) {
 
     if (send_all(a->client_fd, pkt, packet_len) == 0) {
         fprintf(stderr,
-                "[main] sent display profile: panel=%ux%u mode=2560x1440 hidpi name=%s\n",
-                info.active_w, info.active_h, info.name);
+                "[main] sent display profile: panel=%ux%u mode=%ux%u hidpi name=%s\n",
+                panel_w, panel_h, mode_w, mode_h, info.name);
     }
     free(pkt);
 }
@@ -275,8 +334,9 @@ static void close_client(struct app *a) {
     a->close_requested = 0;
     a->have_video_frame = 0;
     tb_disp_set_connection_state(a->disp, 0);
-    snprintf(a->status_text, sizeof(a->status_text), "%s", "in attesa del sender");
-    snprintf(a->sender_text, sizeof(a->sender_text), "%s", "in attesa");
+    tb_disp_set_cursor(a->disp, 0, 0, 1, 1, 0);
+    snprintf(a->status_text, sizeof(a->status_text), "%s", "waiting for sender");
+    snprintf(a->sender_text, sizeof(a->sender_text), "%s", "waiting");
     tb_parser_free(&a->parser);
     tb_parser_init(&a->parser, on_packet, a);
     tb_dec_reset(a->dec);   /* fresh decoder for next session */
@@ -307,10 +367,10 @@ int main(int argc, char **argv) {
     memset(&a, 0, sizeof(a));
     a.server_fd = -1;
     a.client_fd = -1;
-    snprintf(a.ip_text, sizeof(a.ip_text), "%s", ip[0] ? ip : "non rilevato");
-    snprintf(a.status_text, sizeof(a.status_text), "%s", "in attesa del sender");
-    snprintf(a.sender_text, sizeof(a.sender_text), "%s", "in attesa");
-    snprintf(a.mode_text, sizeof(a.mode_text), "%s", "2560 x 1440 HiDPI su pannello 5K");
+    snprintf(a.ip_text, sizeof(a.ip_text), "%s", ip[0] ? ip : "not detected");
+    snprintf(a.status_text, sizeof(a.status_text), "%s", "waiting for sender");
+    snprintf(a.sender_text, sizeof(a.sender_text), "%s", "waiting");
+    snprintf(a.mode_text, sizeof(a.mode_text), "%s", "2560 x 1440 HiDPI on 5K display");
 
     a.disp = tb_disp_create(fullscreen);
     if (!a.disp) { fprintf(stderr, "tb_disp_create failed\n"); return 1; }
@@ -320,7 +380,7 @@ int main(int argc, char **argv) {
         snprintf(a.panel_text, sizeof(a.panel_text), "%u x %u px (%s)",
                  boot_info.active_w, boot_info.active_h, boot_info.name);
     } else {
-        snprintf(a.panel_text, sizeof(a.panel_text), "%s", "pannello 5K");
+        snprintf(a.panel_text, sizeof(a.panel_text), "%s", "5K display");
     }
 
     a.dec = tb_dec_create(on_frame, &a);
@@ -332,16 +392,30 @@ int main(int argc, char **argv) {
     if (a.server_fd < 0) { fprintf(stderr, "tb_net_listen failed\n"); return 1; }
 
     a.last_fps_tick_ms = now_ms();
+    a.last_ip_check_ms = 0;
 
     while (!g_term && !tb_disp_poll_quit(a.disp)) {
+        uint64_t t = now_ms();
+
+        if (t - a.last_ip_check_ms >= 1000) {
+            char refreshed_ip[64] = {0};
+            a.last_ip_check_ms = t;
+            if (tb_net_get_tb_ip(refreshed_ip, sizeof(refreshed_ip)) == 0 &&
+                refreshed_ip[0] != '\0' &&
+                strcmp(a.ip_text, refreshed_ip) != 0) {
+                snprintf(a.ip_text, sizeof(a.ip_text), "%s", refreshed_ip);
+                fprintf(stderr, "[main] Thunderbolt Bridge IP = %s\n", refreshed_ip);
+            }
+        }
+
         /* Accept new client */
         if (a.client_fd < 0) {
             int c = tb_net_accept(a.server_fd);
             if (c >= 0) {
                 a.client_fd = c;
                 a.have_video_frame = 0;
-                snprintf(a.status_text, sizeof(a.status_text), "%s", "sender collegato, negoziazione in corso");
-                snprintf(a.sender_text, sizeof(a.sender_text), "%s", "identificazione in corso");
+                snprintf(a.status_text, sizeof(a.status_text), "%s", "sender connected, negotiating");
+                snprintf(a.sender_text, sizeof(a.sender_text), "%s", "identifying");
                 fprintf(stderr, "[main] client connected\n");
                 send_receiver_info(&a);
             }
@@ -355,7 +429,6 @@ int main(int argc, char **argv) {
         }
 
         /* FPS log */
-        uint64_t t = now_ms();
         if (t - a.last_fps_tick_ms >= 1000) {
             uint64_t df = a.frames - a.last_fps_count;
             a.last_fps_count   = a.frames;
@@ -363,8 +436,11 @@ int main(int argc, char **argv) {
             if (df > 0) fprintf(stderr, "[main] %llu fps\n", (unsigned long long)df);
         }
 
-        /* Yield: don't burn a core when idle. */
-        SDL_Delay(1);
+        /* Yield only while idle. During active video, keep draining and
+         * rendering without injecting an extra millisecond of latency. */
+        if (a.client_fd < 0 || !a.have_video_frame) {
+            SDL_Delay(1);
+        }
     }
 
     if (a.client_fd >= 0) close(a.client_fd);
