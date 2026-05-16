@@ -82,6 +82,14 @@ struct TBDisplaySenderContentView: View {
                     .pickerStyle(.segmented)
                     .disabled(service.isConnected || service.isStreaming)
 
+                    Picker(TBDisplaySenderL10n.streamTuning(service.language), selection: $service.streamTuning) {
+                        ForEach(TBDisplayStreamTuning.allCases) { tuning in
+                            Text(tuning.title(service.language)).tag(tuning)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .disabled(service.isConnected || service.isStreaming)
+
                     Text(TBDisplaySenderL10n.streamHint1(service.language))
                     Text(TBDisplaySenderL10n.streamHint2(service.language))
                         .font(.footnote)

@@ -268,28 +268,28 @@ static void tb_disp_rebuild_status_texture(struct tb_display *d,
     tb_disp_fill_rect(ctx, 48, (CGFloat)drawable_h - 110, (CGFloat)drawable_w - 96, 2, 0.23, 0.25, 0.30, 1.0);
 
     tb_disp_draw_text(ctx, "TARGETBRIDGE RECEIVER", "Helvetica-Bold", 30, 72, (CGFloat)drawable_h - 90, 0.95, 0.97, 1.0);
-    tb_disp_draw_text(ctx, "Receiver 5K / HiDPI pronto per il sender", "Helvetica", 18, 72, (CGFloat)drawable_h - 122, 0.72, 0.76, 0.84);
+    tb_disp_draw_text(ctx, "5K / HiDPI receiver ready for the sender", "Helvetica", 18, 72, (CGFloat)drawable_h - 122, 0.72, 0.76, 0.84);
     tb_disp_draw_text(ctx, TB_RECEIVER_VERSION, "Menlo-Bold", 18, (CGFloat)drawable_w - 220, (CGFloat)drawable_h - 92, 0.64, 0.69, 0.78);
     tb_disp_draw_text(ctx, TB_RECEIVER_BUILD, "Menlo", 14, (CGFloat)drawable_w - 220, (CGFloat)drawable_h - 118, 0.53, 0.57, 0.66);
 
     tb_disp_draw_text(ctx, "IP THUNDERBOLT BRIDGE", "Helvetica-Bold", 16, 72, (CGFloat)drawable_h - 190, 0.54, 0.62, 0.76);
     tb_disp_draw_text(ctx, ip, "Menlo-Bold", 36, 72, (CGFloat)drawable_h - 235, 0.43, 0.93, 0.60);
 
-    tb_disp_draw_text(ctx, "STATO", "Helvetica-Bold", 16, 72, (CGFloat)drawable_h - 300, 0.54, 0.62, 0.76);
+    tb_disp_draw_text(ctx, "STATUS", "Helvetica-Bold", 16, 72, (CGFloat)drawable_h - 300, 0.54, 0.62, 0.76);
     tb_disp_draw_text(ctx, status, "Helvetica", 24, 72, (CGFloat)drawable_h - 338, 0.94, 0.96, 0.99);
 
     tb_disp_draw_text(ctx, "SENDER", "Helvetica-Bold", 16, 72, (CGFloat)drawable_h - 400, 0.54, 0.62, 0.76);
     tb_disp_draw_text(ctx, sender, "Helvetica", 22, 72, (CGFloat)drawable_h - 436, 0.94, 0.96, 0.99);
 
-    tb_disp_draw_text(ctx, "PANNELLO", "Helvetica-Bold", 16, 72, (CGFloat)drawable_h - 498, 0.54, 0.62, 0.76);
+    tb_disp_draw_text(ctx, "PANEL", "Helvetica-Bold", 16, 72, (CGFloat)drawable_h - 498, 0.54, 0.62, 0.76);
     tb_disp_draw_text(ctx, panel, "Menlo", 22, 72, (CGFloat)drawable_h - 534, 0.94, 0.96, 0.99);
 
-    tb_disp_draw_text(ctx, "PROFILO STREAM", "Helvetica-Bold", 16, 72, (CGFloat)drawable_h - 596, 0.54, 0.62, 0.76);
+    tb_disp_draw_text(ctx, "STREAM PROFILE", "Helvetica-Bold", 16, 72, (CGFloat)drawable_h - 596, 0.54, 0.62, 0.76);
     tb_disp_draw_text(ctx, mode, "Menlo", 22, 72, (CGFloat)drawable_h - 632, 0.94, 0.96, 0.99);
 
-    tb_disp_draw_text(ctx, "Avvia il sender sul MacBook e inserisci questo IP.", "Helvetica", 18, 72, 92, 0.76, 0.80, 0.88);
-    tb_disp_draw_text(ctx, "Quando arriva il primo frame il receiver passa in fullscreen automaticamente.", "Helvetica", 18, 72, 62, 0.76, 0.80, 0.88);
-    tb_disp_draw_text(ctx, "Se il sender si ferma, il receiver torna qui pronto per una nuova sessione.", "Helvetica", 18, 72, 32, 0.76, 0.80, 0.88);
+    tb_disp_draw_text(ctx, "Start the sender on the MacBook and enter this IP.", "Helvetica", 18, 72, 92, 0.76, 0.80, 0.88);
+    tb_disp_draw_text(ctx, "When the first frame arrives, the receiver switches to fullscreen.", "Helvetica", 18, 72, 62, 0.76, 0.80, 0.88);
+    tb_disp_draw_text(ctx, "If the sender stops, the receiver returns here ready for a new session.", "Helvetica", 18, 72, 32, 0.76, 0.80, 0.88);
 
     CGContextRelease(ctx);
 
@@ -499,11 +499,11 @@ void tb_disp_render_status(struct tb_display *d,
 
     tb_disp_set_connection_state(d, 0);
 
-    if (!ip) ip = "non rilevato";
-    if (!status) status = "in attesa del sender";
-    if (!sender) sender = "in attesa";
-    if (!panel) panel = "pannello sconosciuto";
-    if (!mode) mode = "2560 x 1440 hidpi su pannello 5k";
+    if (!ip) ip = "not detected";
+    if (!status) status = "waiting for sender";
+    if (!sender) sender = "waiting";
+    if (!panel) panel = "unknown panel";
+    if (!mode) mode = "2560 x 1440 HiDPI on 5K panel";
 
     int drawable_w = 0, drawable_h = 0;
     if (SDL_GetRendererOutputSize(d->ren, &drawable_w, &drawable_h) < 0 ||

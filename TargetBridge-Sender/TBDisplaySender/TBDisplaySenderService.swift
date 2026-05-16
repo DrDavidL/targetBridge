@@ -50,24 +50,6 @@ enum TBDisplayCapturePreset: String, CaseIterable, Identifiable {
         }
     }
 
-    var averageBitRate: Int {
-        switch self {
-        case .standard1440p:
-            return 36_000_000
-        case .native5k:
-            return 96_000_000
-        }
-    }
-
-    var encoderQuality: Double {
-        switch self {
-        case .standard1440p:
-            return 0.82
-        case .native5k:
-            return 0.92
-        }
-    }
-
     var codecName: String {
         switch self {
         case .standard1440p:
@@ -122,13 +104,42 @@ enum TBDisplayCapturePreset: String, CaseIterable, Identifiable {
         }
     }
 
-    var prioritizeSpeed: Bool {
-        switch self {
-        case .standard1440p:
-            return false
-        case .native5k:
-            return false
+    func averageBitRate(for tuning: TBDisplayStreamTuning) -> Int {
+        switch (self, tuning) {
+        case (.standard1440p, .lowLatency):
+            return 28_000_000
+        case (.standard1440p, .balanced):
+            return 36_000_000
+        case (.standard1440p, .sharpText):
+            return 48_000_000
+        case (.native5k, .lowLatency):
+            return 72_000_000
+        case (.native5k, .balanced):
+            return 96_000_000
+        case (.native5k, .sharpText):
+            return 120_000_000
         }
+    }
+
+    func encoderQuality(for tuning: TBDisplayStreamTuning) -> Double {
+        switch (self, tuning) {
+        case (.standard1440p, .lowLatency):
+            return 0.74
+        case (.standard1440p, .balanced):
+            return 0.82
+        case (.standard1440p, .sharpText):
+            return 0.90
+        case (.native5k, .lowLatency):
+            return 0.78
+        case (.native5k, .balanced):
+            return 0.92
+        case (.native5k, .sharpText):
+            return 0.98
+        }
+    }
+
+    func prioritizeSpeed(for tuning: TBDisplayStreamTuning) -> Bool {
+        tuning == .lowLatency
     }
 }
 
@@ -144,6 +155,25 @@ enum TBDisplayCaptureSource: String, CaseIterable, Identifiable {
         case (.extendedVirtualDisplay, .english): return "Extended display"
         case (.mainDisplayMirror, .italian): return "Duplica MacBook"
         case (.mainDisplayMirror, .english): return "Mirror MacBook"
+        }
+    }
+}
+
+enum TBDisplayStreamTuning: String, CaseIterable, Identifiable {
+    case lowLatency
+    case balanced
+    case sharpText
+
+    var id: String { rawValue }
+
+    func title(_ language: TBDisplaySenderLanguage) -> String {
+        switch (self, language) {
+        case (.lowLatency, .italian): return "Bassa latenza"
+        case (.lowLatency, .english): return "Low latency"
+        case (.balanced, .italian): return "Bilanciato"
+        case (.balanced, .english): return "Balanced"
+        case (.sharpText, .italian): return "Testo nitido"
+        case (.sharpText, .english): return "Sharp text"
         }
     }
 }
@@ -171,12 +201,19 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
     @Published var capturePreset: TBDisplayCapturePreset = .native5k {
         didSet {
             if !isStreaming {
-                streamResolutionText = TBDisplaySenderL10n.streamSummary(preset: capturePreset, language: language)
+                streamResolutionText = TBDisplaySenderL10n.streamSummary(preset: capturePreset, tuning: streamTuning, language: language)
+            }
+        }
+    }
+    @Published var streamTuning: TBDisplayStreamTuning = .balanced {
+        didSet {
+            if !isStreaming {
+                streamResolutionText = TBDisplaySenderL10n.streamSummary(preset: capturePreset, tuning: streamTuning, language: language)
             }
         }
     }
     @Published var captureSource: TBDisplayCaptureSource = .extendedVirtualDisplay
-    @Published var streamResolutionText = TBDisplaySenderL10n.streamSummary(preset: .native5k, language: TBDisplaySenderLanguage.load())
+    @Published var streamResolutionText = TBDisplaySenderL10n.streamSummary(preset: .native5k, tuning: .balanced, language: TBDisplaySenderLanguage.load())
 
     private var connection: NWConnection?
     private let connectionQueue = DispatchQueue(label: "fd.tbmonitor.sender.connection", qos: .userInteractive)
@@ -223,7 +260,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
 
     private func refreshLocalizedText() {
         statusText = statusState.text(language)
-        streamResolutionText = TBDisplaySenderL10n.streamSummary(preset: capturePreset, language: language)
+        streamResolutionText = TBDisplaySenderL10n.streamSummary(preset: capturePreset, tuning: streamTuning, language: language)
 
         if let profile = activeProfile {
             receiverPanelText = TBDisplaySenderL10n.receiverSummary(profile, language: language)
@@ -355,6 +392,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
             value: TBMonitorHelloReceiver(
                 senderName: name,
                 capturePreset: preset.title,
+                streamTuning: streamTuning.title(language),
                 captureSource: captureSource.title(language),
                 captureWidth: preset.width,
                 captureHeight: preset.height,
@@ -474,9 +512,11 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
                 height: preset.height,
                 preset: preset,
                 codecType: preset.codecType,
-                averageBitRate: preset.averageBitRate
+                averageBitRate: preset.averageBitRate(for: streamTuning),
+                encoderQuality: preset.encoderQuality(for: streamTuning),
+                prioritizeSpeed: preset.prioritizeSpeed(for: streamTuning)
             )
-            streamResolutionText = "\(preset.description) (\(preset.title), \(preset.codecName))"
+            streamResolutionText = TBDisplaySenderL10n.streamSummary(preset: preset, tuning: streamTuning, language: language)
 
             let delegate = CaptureDelegate()
             delegate.onFrame = { [weak self] sampleBuffer in
@@ -568,7 +608,13 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         )
     }
 
-    private func setupEncoder(width: Int, height: Int, preset: TBDisplayCapturePreset, codecType: CMVideoCodecType, averageBitRate: Int) {
+    private func setupEncoder(width: Int,
+                              height: Int,
+                              preset: TBDisplayCapturePreset,
+                              codecType: CMVideoCodecType,
+                              averageBitRate: Int,
+                              encoderQuality: Double,
+                              prioritizeSpeed: Bool) {
         if let encoder = vtEncoder { VTCompressionSessionInvalidate(encoder) }
         vtEncoder = nil
         vtEncoderRef?.release()
@@ -618,8 +664,8 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, value: NSNumber(value: preset.maxKeyFrameIntervalDuration))
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: NSNumber(value: 1))
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: NSNumber(value: averageBitRate))
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_Quality, value: NSNumber(value: preset.encoderQuality))
-        if preset.prioritizeSpeed {
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_Quality, value: NSNumber(value: encoderQuality))
+        if prioritizeSpeed {
             VTSessionSetProperty(session, key: kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality, value: kCFBooleanTrue)
         }
         VTCompressionSessionPrepareToEncodeFrames(session)

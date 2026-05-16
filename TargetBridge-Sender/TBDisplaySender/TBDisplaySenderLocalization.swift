@@ -167,6 +167,10 @@ enum TBDisplaySenderL10n {
         language == .italian ? "Profilo stream" : "Stream profile"
     }
 
+    static func streamTuning(_ language: TBDisplaySenderLanguage) -> String {
+        language == .italian ? "Qualità stream" : "Stream quality"
+    }
+
     static func captureSource(_ language: TBDisplaySenderLanguage) -> String {
         language == .italian ? "Sorgente" : "Source"
     }
@@ -183,9 +187,9 @@ enum TBDisplaySenderL10n {
     static func streamHint2(_ language: TBDisplaySenderLanguage) -> String {
         switch language {
         case .italian:
-            return "`5K` invia 5120 × 2880 via HEVC. `Standard` scala a 2560 × 1440 per maggiore stabilita'."
+            return "`Testo nitido` aumenta bitrate e qualità; `Bassa latenza` privilegia reattività."
         case .english:
-            return "`5K` sends 5120 × 2880 over HEVC. `Standard` scales to 2560 × 1440 for higher stability."
+            return "`Sharp text` raises bitrate and quality; `Low latency` favors responsiveness."
         }
     }
 
@@ -308,8 +312,8 @@ enum TBDisplaySenderL10n {
         }
     }
 
-    static func streamSummary(preset: TBDisplayCapturePreset, language: TBDisplaySenderLanguage) -> String {
-        "\(preset.description) (\(preset.title(language)), \(preset.codecName))"
+    static func streamSummary(preset: TBDisplayCapturePreset, tuning: TBDisplayStreamTuning, language: TBDisplaySenderLanguage) -> String {
+        "\(preset.description) (\(preset.title(language)), \(preset.codecName), \(tuning.title(language)))"
     }
 
     static func missingScreenRecordingPermission(language: TBDisplaySenderLanguage) -> String {

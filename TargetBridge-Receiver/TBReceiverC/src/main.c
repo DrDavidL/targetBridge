@@ -115,8 +115,8 @@ static void on_frame(const uint8_t *y, int y_stride,
                      int w, int h, void *ud) {
     struct app *a = (struct app *)ud;
     a->have_video_frame = 1;
-    snprintf(a->status_text, sizeof(a->status_text), "%s", "stream attivo");
-    snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px in ricezione", w, h);
+    snprintf(a->status_text, sizeof(a->status_text), "%s", "stream active");
+    snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px receiving", w, h);
     tb_disp_render_nv12(a->disp, y, y_stride, uv, uv_stride, w, h);
     a->frames++;
 }
@@ -129,41 +129,46 @@ static void on_packet(uint8_t type, const uint8_t *payload, size_t len, void *ud
     case TB_PKT_HELLO_RECEIVER:
         extract_json_string_field(payload, len, "\"senderName\"", a->sender_text, sizeof(a->sender_text));
         if (a->sender_text[0] == '\0') {
-            snprintf(a->sender_text, sizeof(a->sender_text), "%s", "sender collegato");
+            snprintf(a->sender_text, sizeof(a->sender_text), "%s", "sender connected");
         }
         {
             char preset[64];
+            char tuning[64];
             char codec[64];
             char source[64];
             int capture_w = 0;
             int capture_h = 0;
             preset[0] = '\0';
+            tuning[0] = '\0';
             codec[0] = '\0';
             source[0] = '\0';
             extract_json_string_field(payload, len, "\"capturePreset\"", preset, sizeof(preset));
+            extract_json_string_field(payload, len, "\"streamTuning\"", tuning, sizeof(tuning));
             extract_json_string_field(payload, len, "\"captureSource\"", source, sizeof(source));
             extract_json_string_field(payload, len, "\"codec\"", codec, sizeof(codec));
             (void)extract_json_int_field(payload, len, "\"captureWidth\"", &capture_w);
             (void)extract_json_int_field(payload, len, "\"captureHeight\"", &capture_h);
 
-            if (capture_w > 0 && capture_h > 0 && source[0] != '\0' && preset[0] != '\0' && codec[0] != '\0') {
-                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px richiesti (%s, %s, %s)", capture_w, capture_h, source, preset, codec);
+            if (capture_w > 0 && capture_h > 0 && source[0] != '\0' && preset[0] != '\0' && codec[0] != '\0' && tuning[0] != '\0') {
+                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px requested (%s, %s, %s, %s)", capture_w, capture_h, source, preset, tuning, codec);
+            } else if (capture_w > 0 && capture_h > 0 && source[0] != '\0' && preset[0] != '\0' && codec[0] != '\0') {
+                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px requested (%s, %s, %s)", capture_w, capture_h, source, preset, codec);
             } else if (capture_w > 0 && capture_h > 0 && preset[0] != '\0' && codec[0] != '\0') {
-                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px richiesti (%s, %s)", capture_w, capture_h, preset, codec);
+                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px requested (%s, %s)", capture_w, capture_h, preset, codec);
             } else if (capture_w > 0 && capture_h > 0 && preset[0] != '\0') {
-                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px richiesti (%s)", capture_w, capture_h, preset);
+                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px requested (%s)", capture_w, capture_h, preset);
             } else if (capture_w > 0 && capture_h > 0 && codec[0] != '\0') {
-                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px richiesti (%s)", capture_w, capture_h, codec);
+                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px requested (%s)", capture_w, capture_h, codec);
             } else if (capture_w > 0 && capture_h > 0) {
-                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px richiesti", capture_w, capture_h);
+                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px requested", capture_w, capture_h);
             }
         }
         fprintf(stderr, "[main] hello from sender\n");
-        snprintf(a->status_text, sizeof(a->status_text), "%s", "sender connesso, profilo inviato");
+        snprintf(a->status_text, sizeof(a->status_text), "%s", "sender connected, profile sent");
         break;
     case TB_PKT_CREATE_SESSION_ACK:
         fprintf(stderr, "[main] sender session ack: %.*s\n", (int)len, (const char *)payload);
-        snprintf(a->status_text, sizeof(a->status_text), "%s", "sessione accettata, attendo i frame");
+        snprintf(a->status_text, sizeof(a->status_text), "%s", "session accepted, waiting for frames");
         break;
     case TB_PKT_PARAM_SETS:
         /* tb_dec_set_param_sets is now a no-op if the sets are unchanged,
@@ -177,7 +182,7 @@ static void on_packet(uint8_t type, const uint8_t *payload, size_t len, void *ud
         break;
     case TB_PKT_TEARDOWN:
         fprintf(stderr, "[main] teardown requested by sender\n");
-        snprintf(a->status_text, sizeof(a->status_text), "%s", "sessione chiusa dal sender");
+        snprintf(a->status_text, sizeof(a->status_text), "%s", "session closed by sender");
         a->close_requested = 1;
         break;
     default:
@@ -297,8 +302,8 @@ static void close_client(struct app *a) {
     a->close_requested = 0;
     a->have_video_frame = 0;
     tb_disp_set_connection_state(a->disp, 0);
-    snprintf(a->status_text, sizeof(a->status_text), "%s", "in attesa del sender");
-    snprintf(a->sender_text, sizeof(a->sender_text), "%s", "in attesa");
+    snprintf(a->status_text, sizeof(a->status_text), "%s", "waiting for sender");
+    snprintf(a->sender_text, sizeof(a->sender_text), "%s", "waiting");
     tb_parser_free(&a->parser);
     tb_parser_init(&a->parser, on_packet, a);
     tb_dec_reset(a->dec);   /* fresh decoder for next session */
@@ -329,10 +334,10 @@ int main(int argc, char **argv) {
     memset(&a, 0, sizeof(a));
     a.server_fd = -1;
     a.client_fd = -1;
-    snprintf(a.ip_text, sizeof(a.ip_text), "%s", ip[0] ? ip : "non rilevato");
-    snprintf(a.status_text, sizeof(a.status_text), "%s", "in attesa del sender");
-    snprintf(a.sender_text, sizeof(a.sender_text), "%s", "in attesa");
-    snprintf(a.mode_text, sizeof(a.mode_text), "%s", "5120 x 2880 HEVC su pannello 5K");
+    snprintf(a.ip_text, sizeof(a.ip_text), "%s", ip[0] ? ip : "not detected");
+    snprintf(a.status_text, sizeof(a.status_text), "%s", "waiting for sender");
+    snprintf(a.sender_text, sizeof(a.sender_text), "%s", "waiting");
+    snprintf(a.mode_text, sizeof(a.mode_text), "%s", "5120 x 2880 HEVC on 5K panel");
 
     a.disp = tb_disp_create(fullscreen);
     if (!a.disp) { fprintf(stderr, "tb_disp_create failed\n"); return 1; }
@@ -342,7 +347,7 @@ int main(int argc, char **argv) {
         snprintf(a.panel_text, sizeof(a.panel_text), "%u x %u px (%s)",
                  boot_info.active_w, boot_info.active_h, boot_info.name);
     } else {
-        snprintf(a.panel_text, sizeof(a.panel_text), "%s", "pannello 5K");
+        snprintf(a.panel_text, sizeof(a.panel_text), "%s", "5K panel");
     }
 
     a.dec = tb_dec_create(on_frame, &a);
@@ -362,8 +367,8 @@ int main(int argc, char **argv) {
             if (c >= 0) {
                 a.client_fd = c;
                 a.have_video_frame = 0;
-                snprintf(a.status_text, sizeof(a.status_text), "%s", "sender collegato, negoziazione in corso");
-                snprintf(a.sender_text, sizeof(a.sender_text), "%s", "identificazione in corso");
+                snprintf(a.status_text, sizeof(a.status_text), "%s", "sender connected, negotiating");
+                snprintf(a.sender_text, sizeof(a.sender_text), "%s", "identifying");
                 fprintf(stderr, "[main] client connected\n");
                 send_receiver_info(&a);
             }
