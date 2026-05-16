@@ -40,8 +40,10 @@ Unzip and double-click. On first launch, grant Screen Recording to the sender.
 
 ## Stream profiles
 
-- `Standard · 2560 × 1440` — low latency, high stability
-- `5K · 5120 × 2880` — sharper image, HEVC, slightly more load
+- `5K · 5120 × 2880` — native iMac 5K stream, HEVC, default
+- `Standard · 2560 × 1440` — lower latency fallback, scaled to fill the receiver
+
+The sender can stream either an extended virtual display or a mirror of the MacBook display.
 
 ## Projects
 

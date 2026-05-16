@@ -13,6 +13,7 @@ enum TBMonitorPacketType: UInt8 {
 struct TBMonitorHelloReceiver: Codable {
     var senderName: String
     var capturePreset: String?
+    var captureSource: String?
     var captureWidth: Int?
     var captureHeight: Int?
     var codec: String?

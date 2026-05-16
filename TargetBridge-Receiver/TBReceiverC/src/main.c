@@ -134,16 +134,21 @@ static void on_packet(uint8_t type, const uint8_t *payload, size_t len, void *ud
         {
             char preset[64];
             char codec[64];
+            char source[64];
             int capture_w = 0;
             int capture_h = 0;
             preset[0] = '\0';
             codec[0] = '\0';
+            source[0] = '\0';
             extract_json_string_field(payload, len, "\"capturePreset\"", preset, sizeof(preset));
+            extract_json_string_field(payload, len, "\"captureSource\"", source, sizeof(source));
             extract_json_string_field(payload, len, "\"codec\"", codec, sizeof(codec));
             (void)extract_json_int_field(payload, len, "\"captureWidth\"", &capture_w);
             (void)extract_json_int_field(payload, len, "\"captureHeight\"", &capture_h);
 
-            if (capture_w > 0 && capture_h > 0 && preset[0] != '\0' && codec[0] != '\0') {
+            if (capture_w > 0 && capture_h > 0 && source[0] != '\0' && preset[0] != '\0' && codec[0] != '\0') {
+                snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px richiesti (%s, %s, %s)", capture_w, capture_h, source, preset, codec);
+            } else if (capture_w > 0 && capture_h > 0 && preset[0] != '\0' && codec[0] != '\0') {
                 snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px richiesti (%s, %s)", capture_w, capture_h, preset, codec);
             } else if (capture_w > 0 && capture_h > 0 && preset[0] != '\0') {
                 snprintf(a->mode_text, sizeof(a->mode_text), "%d x %d px richiesti (%s)", capture_w, capture_h, preset);
@@ -227,6 +232,18 @@ static void send_receiver_info(struct app *a) {
     struct tb_display_info info;
     if (tb_disp_get_info(a->disp, &info) < 0) return;
 
+    uint32_t panel_w = info.active_w ? info.active_w : 5120;
+    uint32_t panel_h = info.active_h ? info.active_h : 2880;
+    uint32_t mode_w = panel_w;
+    uint32_t mode_h = panel_h;
+    int hidpi = 0;
+
+    if (panel_w >= 3840 && panel_h >= 2160) {
+        mode_w = panel_w / 2;
+        mode_h = panel_h / 2;
+        hidpi = 1;
+    }
+
     char escaped_name[256];
     size_t out = 0;
     for (size_t i = 0; info.name[i] != '\0' && out + 2 < sizeof(escaped_name); i++) {
@@ -245,11 +262,16 @@ static void send_receiver_info(struct app *a) {
         json,
         sizeof(json),
         "{\"receiverName\":\"%s\",\"panelWidth\":%u,\"panelHeight\":%u,"
-        "\"modeWidth\":2560,\"modeHeight\":1440,\"refreshRate\":60,"
-        "\"hiDPI\":true,\"captureWidth\":2560,\"captureHeight\":1440}",
+        "\"modeWidth\":%u,\"modeHeight\":%u,\"refreshRate\":60,"
+        "\"hiDPI\":%s,\"captureWidth\":%u,\"captureHeight\":%u}",
         escaped_name,
-        info.active_w,
-        info.active_h
+        panel_w,
+        panel_h,
+        mode_w,
+        mode_h,
+        hidpi ? "true" : "false",
+        panel_w,
+        panel_h
     );
     if (json_len <= 0 || (size_t)json_len >= sizeof(json)) return;
 
@@ -263,8 +285,8 @@ static void send_receiver_info(struct app *a) {
 
     if (send_all(a->client_fd, pkt, packet_len) == 0) {
         fprintf(stderr,
-                "[main] sent display profile: panel=%ux%u mode=2560x1440 hidpi name=%s\n",
-                info.active_w, info.active_h, info.name);
+                "[main] sent display profile: panel=%ux%u mode=%ux%u hidpi=%s name=%s\n",
+                panel_w, panel_h, mode_w, mode_h, hidpi ? "true" : "false", info.name);
     }
     free(pkt);
 }
@@ -310,7 +332,7 @@ int main(int argc, char **argv) {
     snprintf(a.ip_text, sizeof(a.ip_text), "%s", ip[0] ? ip : "non rilevato");
     snprintf(a.status_text, sizeof(a.status_text), "%s", "in attesa del sender");
     snprintf(a.sender_text, sizeof(a.sender_text), "%s", "in attesa");
-    snprintf(a.mode_text, sizeof(a.mode_text), "%s", "2560 x 1440 HiDPI su pannello 5K");
+    snprintf(a.mode_text, sizeof(a.mode_text), "%s", "5120 x 2880 HEVC su pannello 5K");
 
     a.disp = tb_disp_create(fullscreen);
     if (!a.disp) { fprintf(stderr, "tb_disp_create failed\n"); return 1; }

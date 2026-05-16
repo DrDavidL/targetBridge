@@ -12,6 +12,7 @@
 #include <CoreText/CoreText.h>
 #include <SDL.h>
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,6 +43,61 @@ struct tb_display {
     int           last_drawable_w;
     int           last_drawable_h;
 };
+
+static int tb_disp_get_cg_pixel_size_for_window(SDL_Window *win,
+                                                uint32_t *pixel_w,
+                                                uint32_t *pixel_h) {
+#if defined(__APPLE__)
+    if (!win || !pixel_w || !pixel_h) return -1;
+
+    int display_index = SDL_GetWindowDisplayIndex(win);
+    if (display_index < 0) display_index = 0;
+
+    SDL_Rect sdl_bounds;
+    int have_sdl_bounds = SDL_GetDisplayBounds(display_index, &sdl_bounds) == 0;
+
+    CGDirectDisplayID displays[32];
+    uint32_t count = 0;
+    if (CGGetActiveDisplayList(32, displays, &count) != kCGErrorSuccess || count == 0) {
+        return -1;
+    }
+
+    CGDirectDisplayID best = displays[0];
+    double best_score = 1.0e30;
+    for (uint32_t i = 0; i < count; i++) {
+        CGRect bounds = CGDisplayBounds(displays[i]);
+        double score = 0.0;
+        if (have_sdl_bounds) {
+            score += fabs(CGRectGetMinX(bounds) - (double)sdl_bounds.x);
+            score += fabs(CGRectGetMinY(bounds) - (double)sdl_bounds.y);
+            score += fabs(CGRectGetWidth(bounds) - (double)sdl_bounds.w);
+            score += fabs(CGRectGetHeight(bounds) - (double)sdl_bounds.h);
+        } else if (CGDisplayIsMain(displays[i])) {
+            score = 0.0;
+        } else {
+            score = 1.0;
+        }
+
+        if (score < best_score) {
+            best_score = score;
+            best = displays[i];
+        }
+    }
+
+    size_t w = CGDisplayPixelsWide(best);
+    size_t h = CGDisplayPixelsHigh(best);
+    if (w == 0 || h == 0) return -1;
+
+    *pixel_w = (uint32_t)w;
+    *pixel_h = (uint32_t)h;
+    return 0;
+#else
+    (void)win;
+    (void)pixel_w;
+    (void)pixel_h;
+    return -1;
+#endif
+}
 
 static void tb_disp_destroy_status_texture(struct tb_display *d) {
     if (d->status_tex) {
@@ -366,9 +422,16 @@ int tb_disp_get_info(struct tb_display *d, struct tb_display_info *info) {
     }
 
     /* On Retina/5K macOS displays SDL_GetCurrentDisplayMode may report the
-     * logical desktop size (for example 2560x1440) while the renderer
-     * drawable exposes the true backing pixel size (for example 5120x2880).
-     * For the TB stream UI we want the actual panel pixel size. */
+     * logical desktop size (for example 2560x1440). CoreGraphics exposes
+     * the physical backing pixels even while our status window is small. */
+    uint32_t cg_w = 0;
+    uint32_t cg_h = 0;
+    if (tb_disp_get_cg_pixel_size_for_window(d->win, &cg_w, &cg_h) == 0) {
+        info->active_w = cg_w;
+        info->active_h = cg_h;
+    }
+
+    /* Keep the drawable fallback for non-macOS and unusual SDL backends. */
     if (info->drawable_w > info->active_w) info->active_w = info->drawable_w;
     if (info->drawable_h > info->active_h) info->active_h = info->drawable_h;
 

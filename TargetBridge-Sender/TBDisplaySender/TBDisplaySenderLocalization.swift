@@ -40,9 +40,9 @@ enum TBDisplaySenderStatusState {
     case receiverTerminatedSession
     case creatingVirtualDisplay
     case virtualDisplayCreationFailed
-    case startingCapture(String)
+    case startingCapture(String, TBDisplayCaptureSource)
     case captureStartedWaitingFirstFrame
-    case captureActive(String, String)
+    case captureActive(String, String, TBDisplayCaptureSource)
     case captureError(String)
     case captureDesktopError(String)
     case noShareableDisplay(String)
@@ -84,14 +84,16 @@ enum TBDisplaySenderStatusState {
         case (.virtualDisplayCreationFailed, .italian): return "Creazione virtual display fallita"
         case (.virtualDisplayCreationFailed, .english): return "Virtual display creation failed"
 
-        case let (.startingCapture(resolution), .italian): return "Avvio cattura del desktop principale (\(resolution))…"
-        case let (.startingCapture(resolution), .english): return "Starting main desktop capture (\(resolution))…"
+        case let (.startingCapture(resolution, source), .italian):
+            return "Avvio \(source.title(language).lowercased()) (\(resolution))…"
+        case let (.startingCapture(resolution, source), .english):
+            return "Starting \(source.title(language).lowercased()) capture (\(resolution))…"
 
         case (.captureStartedWaitingFirstFrame, .italian): return "Cattura avviata, attendo il primo frame…"
         case (.captureStartedWaitingFirstFrame, .english): return "Capture started, waiting for the first frame…"
 
-        case let (.captureActive(resolution, codec), .italian): return "Duplicazione desktop attiva (\(resolution), \(codec))"
-        case let (.captureActive(resolution, codec), .english): return "Desktop duplication active (\(resolution), \(codec))"
+        case let (.captureActive(resolution, codec, source), .italian): return "\(source.title(language)) attivo (\(resolution), \(codec))"
+        case let (.captureActive(resolution, codec, source), .english): return "\(source.title(language)) active (\(resolution), \(codec))"
 
         case let (.captureError(error), .italian): return "Errore capture: \(error)"
         case let (.captureError(error), .english): return "Capture error: \(error)"
@@ -119,9 +121,9 @@ enum TBDisplaySenderL10n {
     static func appSubtitle(_ language: TBDisplaySenderLanguage) -> String {
         switch language {
         case .italian:
-            return "Crea la sessione monitor per macOS, duplica il desktop principale e lo invia al receiver 5K."
+            return "Crea un monitor macOS per il receiver 5K e puo' usarlo come desktop esteso."
         case .english:
-            return "Creates the macOS monitor session, duplicates the main desktop, and sends it to the 5K receiver."
+            return "Creates a macOS display for the 5K receiver and can use it as an extended desktop."
         }
     }
 
@@ -165,21 +167,25 @@ enum TBDisplaySenderL10n {
         language == .italian ? "Profilo stream" : "Stream profile"
     }
 
+    static func captureSource(_ language: TBDisplaySenderLanguage) -> String {
+        language == .italian ? "Sorgente" : "Source"
+    }
+
     static func streamHint1(_ language: TBDisplaySenderLanguage) -> String {
         switch language {
         case .italian:
-            return "`Standard` mantiene il profilo attuale. `5K` prova la cattura a 5120 × 2880 mantenendo la duplicazione del desktop principale."
+            return "`Desktop esteso` mostra il monitor virtuale sul receiver. `Duplica MacBook` mantiene la modalita' mirror."
         case .english:
-            return "`Standard` keeps the current profile. `5K` tries 5120 × 2880 capture while still duplicating the main desktop."
+            return "`Extended display` shows the virtual monitor on the receiver. `Mirror MacBook` keeps the old mirror behavior."
         }
     }
 
     static func streamHint2(_ language: TBDisplaySenderLanguage) -> String {
         switch language {
         case .italian:
-            return "Il profilo `5K` usa `HEVC` con tuning più aggressivo sulla latenza."
+            return "`5K` invia 5120 × 2880 via HEVC. `Standard` scala a 2560 × 1440 per maggiore stabilita'."
         case .english:
-            return "The `5K` profile uses `HEVC` with more aggressive latency tuning."
+            return "`5K` sends 5120 × 2880 over HEVC. `Standard` scales to 2560 × 1440 for higher stability."
         }
     }
 
@@ -223,8 +229,8 @@ enum TBDisplaySenderL10n {
 
     static func modeLine3(_ language: TBDisplaySenderLanguage) -> String {
         switch language {
-        case .italian: return "Pipeline: sessione virtual display + desktop principale → ScreenCaptureKit → codec hardware → TCP"
-        case .english: return "Pipeline: virtual display session + main desktop → ScreenCaptureKit → hardware codec → TCP"
+        case .italian: return "Pipeline: virtual display o mirror → ScreenCaptureKit → codec hardware → TCP"
+        case .english: return "Pipeline: virtual display or mirror → ScreenCaptureKit → hardware codec → TCP"
         }
     }
 
@@ -237,8 +243,8 @@ enum TBDisplaySenderL10n {
 
     static func modeLine5(_ language: TBDisplaySenderLanguage) -> String {
         switch language {
-        case .italian: return "Puoi scegliere se restare sul profilo standard o provare la cattura 5K."
-        case .english: return "You can stay on the standard profile or try 5K capture."
+        case .italian: return "Puoi scegliere desktop esteso o mirror, e Standard o 5K."
+        case .english: return "You can choose extended display or mirror, and Standard or 5K."
         }
     }
 
@@ -284,11 +290,12 @@ enum TBDisplaySenderL10n {
     }
 
     static func receiverSummary(_ profile: TBMonitorDisplayProfile, language: TBDisplaySenderLanguage) -> String {
+        let modeSuffix = profile.hiDPI ? " HiDPI" : ""
         switch language {
         case .italian:
-            return "\(profile.receiverName): pannello \(profile.panelWidth)×\(profile.panelHeight), modalità \(profile.modeWidth)×\(profile.modeHeight) HiDPI"
+            return "\(profile.receiverName): pannello \(profile.panelWidth)×\(profile.panelHeight), modalità \(profile.modeWidth)×\(profile.modeHeight)\(modeSuffix)"
         case .english:
-            return "\(profile.receiverName): panel \(profile.panelWidth)×\(profile.panelHeight), mode \(profile.modeWidth)×\(profile.modeHeight) HiDPI"
+            return "\(profile.receiverName): panel \(profile.panelWidth)×\(profile.panelHeight), mode \(profile.modeWidth)×\(profile.modeHeight)\(modeSuffix)"
         }
     }
 
