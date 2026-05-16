@@ -106,6 +106,24 @@ static void tb_disp_destroy_status_texture(struct tb_display *d) {
     }
 }
 
+static CGFloat tb_disp_tracking_for_text(const char *text, CGFloat font_size) {
+    if (!text || font_size < 14.0) return 0.0;
+
+    int letters = 0;
+    int uppercase = 0;
+    for (const unsigned char *p = (const unsigned char *)text; *p; p++) {
+        if (*p >= 'A' && *p <= 'Z') {
+            letters++;
+            uppercase++;
+        } else if (*p >= 'a' && *p <= 'z') {
+            letters++;
+        }
+    }
+
+    if (letters < 4 || uppercase != letters) return 0.0;
+    return font_size >= 24.0 ? 0.8 : 1.1;
+}
+
 static void tb_disp_draw_text(CGContextRef ctx,
                               const char *text,
                               const char *font_name,
@@ -143,13 +161,24 @@ static void tb_disp_draw_text(CGContextRef ctx,
         return;
     }
 
-    const void *keys[] = { kCTFontAttributeName, kCTForegroundColorAttributeName };
-    const void *values[] = { font, color };
+    CGFloat tracking = tb_disp_tracking_for_text(text, font_size);
+    CFNumberRef tracking_value = NULL;
+    const void *keys[3] = { kCTFontAttributeName, kCTForegroundColorAttributeName, kCTKernAttributeName };
+    const void *values[3] = { font, color, NULL };
+    CFIndex attr_count = 2;
+    if (tracking > 0.0) {
+        tracking_value = CFNumberCreate(NULL, kCFNumberCGFloatType, &tracking);
+        if (tracking_value) {
+            values[2] = tracking_value;
+            attr_count = 3;
+        }
+    }
+
     CFDictionaryRef attrs = CFDictionaryCreate(
         NULL,
         keys,
         values,
-        2,
+        attr_count,
         &kCFTypeDictionaryKeyCallBacks,
         &kCFTypeDictionaryValueCallBacks
     );
@@ -172,6 +201,7 @@ static void tb_disp_draw_text(CGContextRef ctx,
 
     if (attributed) CFRelease(attributed);
     if (attrs) CFRelease(attrs);
+    if (tracking_value) CFRelease(tracking_value);
     CGColorRelease(color);
     CFRelease(font);
     CFRelease(cf_text);
@@ -224,6 +254,14 @@ static void tb_disp_rebuild_status_texture(struct tb_display *d,
 
     CGContextTranslateCTM(ctx, 0, (CGFloat)drawable_h);
     CGContextScaleCTM(ctx, 1.0, -1.0);
+    CGContextSetAllowsAntialiasing(ctx, 1);
+    CGContextSetShouldAntialias(ctx, 1);
+    CGContextSetAllowsFontSmoothing(ctx, 1);
+    CGContextSetShouldSmoothFonts(ctx, 1);
+    CGContextSetAllowsFontSubpixelPositioning(ctx, 1);
+    CGContextSetShouldSubpixelPositionFonts(ctx, 1);
+    CGContextSetAllowsFontSubpixelQuantization(ctx, 1);
+    CGContextSetShouldSubpixelQuantizeFonts(ctx, 1);
 
     tb_disp_fill_rect(ctx, 0, 0, (CGFloat)drawable_w, (CGFloat)drawable_h, 0.06, 0.07, 0.09, 1.0);
     tb_disp_fill_rect(ctx, 48, 52, (CGFloat)drawable_w - 96, (CGFloat)drawable_h - 104, 0.12, 0.13, 0.16, 1.0);

@@ -55,7 +55,16 @@ enum TBDisplayCapturePreset: String, CaseIterable, Identifiable {
         case .standard1440p:
             return 36_000_000
         case .native5k:
-            return 72_000_000
+            return 96_000_000
+        }
+    }
+
+    var encoderQuality: Double {
+        switch self {
+        case .standard1440p:
+            return 0.82
+        case .native5k:
+            return 0.92
         }
     }
 
@@ -118,7 +127,7 @@ enum TBDisplayCapturePreset: String, CaseIterable, Identifiable {
         case .standard1440p:
             return false
         case .native5k:
-            return true
+            return false
         }
     }
 }
@@ -609,6 +618,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, value: NSNumber(value: preset.maxKeyFrameIntervalDuration))
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: NSNumber(value: 1))
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: NSNumber(value: averageBitRate))
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_Quality, value: NSNumber(value: preset.encoderQuality))
         if preset.prioritizeSpeed {
             VTSessionSetProperty(session, key: kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality, value: kCFBooleanTrue)
         }
