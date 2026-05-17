@@ -249,7 +249,7 @@ enum TBDisplaySenderL10n {
     static func monitorSessionGroup(_ language: TBDisplaySenderLanguage) -> String {
         switch language {
         case .italian: return "Sessione monitor"
-        case .english: return "Monitor session"
+        case .english: return "Monitor session"  // "Monitor" means "Display/Screen" here (noun)
         case .german: return "Bildschirmsitzung"
         }
     }
