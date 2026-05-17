@@ -31,6 +31,12 @@ void tb_disp_render_nv12(struct tb_display *d,
                          const uint8_t *uv, int uv_stride,
                          int w, int h);
 
+/* Update low-latency local cursor overlay in source-frame coordinates. */
+void tb_disp_set_cursor(struct tb_display *d,
+                        int x, int y,
+                        int source_w, int source_h,
+                        int visible);
+
 /* Returns 1 if user requested quit (ESC or window close). */
 int  tb_disp_poll_quit(struct tb_display *d);
 

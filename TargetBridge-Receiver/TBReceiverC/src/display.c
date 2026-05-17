@@ -33,6 +33,9 @@ struct tb_display {
     int           quit;
     int           preferred_fullscreen;
     int           is_connected;
+    int           cursor_x, cursor_y;
+    int           cursor_source_w, cursor_source_h;
+    int           cursor_visible;
 
     char          last_ip[64];
     char          last_status[128];
@@ -174,28 +177,28 @@ static void tb_disp_rebuild_status_texture(struct tb_display *d,
     tb_disp_fill_rect(ctx, 48, (CGFloat)drawable_h - 110, (CGFloat)drawable_w - 96, 2, 0.23, 0.25, 0.30, 1.0);
 
     tb_disp_draw_text(ctx, "TARGETBRIDGE RECEIVER", "Helvetica-Bold", 30, 72, (CGFloat)drawable_h - 90, 0.95, 0.97, 1.0);
-    tb_disp_draw_text(ctx, "Receiver 5K / HiDPI pronto per il sender", "Helvetica", 18, 72, (CGFloat)drawable_h - 122, 0.72, 0.76, 0.84);
+    tb_disp_draw_text(ctx, "5K / HiDPI receiver ready for sender", "Helvetica", 18, 72, (CGFloat)drawable_h - 122, 0.72, 0.76, 0.84);
     tb_disp_draw_text(ctx, TB_RECEIVER_VERSION, "Menlo-Bold", 18, (CGFloat)drawable_w - 220, (CGFloat)drawable_h - 92, 0.64, 0.69, 0.78);
     tb_disp_draw_text(ctx, TB_RECEIVER_BUILD, "Menlo", 14, (CGFloat)drawable_w - 220, (CGFloat)drawable_h - 118, 0.53, 0.57, 0.66);
 
     tb_disp_draw_text(ctx, "IP THUNDERBOLT BRIDGE", "Helvetica-Bold", 16, 72, (CGFloat)drawable_h - 190, 0.54, 0.62, 0.76);
     tb_disp_draw_text(ctx, ip, "Menlo-Bold", 36, 72, (CGFloat)drawable_h - 235, 0.43, 0.93, 0.60);
 
-    tb_disp_draw_text(ctx, "STATO", "Helvetica-Bold", 16, 72, (CGFloat)drawable_h - 300, 0.54, 0.62, 0.76);
+    tb_disp_draw_text(ctx, "STATUS", "Helvetica-Bold", 16, 72, (CGFloat)drawable_h - 300, 0.54, 0.62, 0.76);
     tb_disp_draw_text(ctx, status, "Helvetica", 24, 72, (CGFloat)drawable_h - 338, 0.94, 0.96, 0.99);
 
     tb_disp_draw_text(ctx, "SENDER", "Helvetica-Bold", 16, 72, (CGFloat)drawable_h - 400, 0.54, 0.62, 0.76);
     tb_disp_draw_text(ctx, sender, "Helvetica", 22, 72, (CGFloat)drawable_h - 436, 0.94, 0.96, 0.99);
 
-    tb_disp_draw_text(ctx, "PANNELLO", "Helvetica-Bold", 16, 72, (CGFloat)drawable_h - 498, 0.54, 0.62, 0.76);
+    tb_disp_draw_text(ctx, "DISPLAY", "Helvetica-Bold", 16, 72, (CGFloat)drawable_h - 498, 0.54, 0.62, 0.76);
     tb_disp_draw_text(ctx, panel, "Menlo", 22, 72, (CGFloat)drawable_h - 534, 0.94, 0.96, 0.99);
 
-    tb_disp_draw_text(ctx, "PROFILO STREAM", "Helvetica-Bold", 16, 72, (CGFloat)drawable_h - 596, 0.54, 0.62, 0.76);
+    tb_disp_draw_text(ctx, "STREAM PROFILE", "Helvetica-Bold", 16, 72, (CGFloat)drawable_h - 596, 0.54, 0.62, 0.76);
     tb_disp_draw_text(ctx, mode, "Menlo", 22, 72, (CGFloat)drawable_h - 632, 0.94, 0.96, 0.99);
 
-    tb_disp_draw_text(ctx, "Avvia il sender sul MacBook e inserisci questo IP.", "Helvetica", 18, 72, 92, 0.76, 0.80, 0.88);
-    tb_disp_draw_text(ctx, "Quando arriva il primo frame il receiver passa in fullscreen automaticamente.", "Helvetica", 18, 72, 62, 0.76, 0.80, 0.88);
-    tb_disp_draw_text(ctx, "Se il sender si ferma, il receiver torna qui pronto per una nuova sessione.", "Helvetica", 18, 72, 32, 0.76, 0.80, 0.88);
+    tb_disp_draw_text(ctx, "Start the sender on your MacBook and enter this IP address.", "Helvetica", 18, 72, 92, 0.76, 0.80, 0.88);
+    tb_disp_draw_text(ctx, "When the first frame arrives, the receiver switches to fullscreen automatically.", "Helvetica", 18, 72, 62, 0.76, 0.80, 0.88);
+    tb_disp_draw_text(ctx, "If the sender stops, the receiver returns here ready for a new session.", "Helvetica", 18, 72, 32, 0.76, 0.80, 0.88);
 
     CGContextRelease(ctx);
 
@@ -283,6 +286,11 @@ struct tb_display *tb_disp_create(int fullscreen) {
     d->last_mode[0] = '\0';
     d->last_drawable_w = 0;
     d->last_drawable_h = 0;
+    d->cursor_x = 0;
+    d->cursor_y = 0;
+    d->cursor_source_w = 1;
+    d->cursor_source_h = 1;
+    d->cursor_visible = 0;
 
     tb_disp_refresh_window_mode(d);
     SDL_ShowWindow(d->win);
@@ -315,6 +323,135 @@ int tb_disp_ensure_texture(struct tb_display *d, int w, int h) {
     return 0;
 }
 
+static void tb_disp_draw_poly_outline(SDL_Renderer *ren, const SDL_Point *pts, int count) {
+    if (!ren || !pts || count < 2) return;
+    for (int i = 0; i < count; ++i) {
+        const SDL_Point a = pts[i];
+        const SDL_Point b = pts[(i + 1) % count];
+        SDL_RenderDrawLine(ren, a.x, a.y, b.x, b.y);
+    }
+}
+
+static void tb_disp_fill_poly(SDL_Renderer *ren, const SDL_Point *pts, int count) {
+    if (!ren || !pts || count < 3) return;
+
+    int min_y = pts[0].y;
+    int max_y = pts[0].y;
+    for (int i = 1; i < count; ++i) {
+        if (pts[i].y < min_y) min_y = pts[i].y;
+        if (pts[i].y > max_y) max_y = pts[i].y;
+    }
+
+    for (int y = min_y; y <= max_y; ++y) {
+        int nodes[16];
+        int node_count = 0;
+
+        for (int i = 0, j = count - 1; i < count; j = i++) {
+            const int yi = pts[i].y;
+            const int yj = pts[j].y;
+            if ((yi < y && yj >= y) || (yj < y && yi >= y)) {
+                const int xi = pts[i].x;
+                const int xj = pts[j].x;
+                if (node_count < (int)(sizeof(nodes) / sizeof(nodes[0]))) {
+                    nodes[node_count++] = xi + ((y - yi) * (xj - xi)) / (yj - yi);
+                }
+            }
+        }
+
+        for (int i = 1; i < node_count; ++i) {
+            int v = nodes[i];
+            int k = i - 1;
+            while (k >= 0 && nodes[k] > v) {
+                nodes[k + 1] = nodes[k];
+                --k;
+            }
+            nodes[k + 1] = v;
+        }
+
+        for (int i = 0; i + 1 < node_count; i += 2) {
+            SDL_RenderDrawLine(ren, nodes[i], y, nodes[i + 1], y);
+        }
+    }
+}
+
+static int tb_disp_cursor_scale(int size, int value) {
+    return (size * value + 16) / 32;
+}
+
+static SDL_Point tb_disp_cursor_point(int x, int y, int size, int px, int py) {
+    SDL_Point p = {
+        x + tb_disp_cursor_scale(size, px),
+        y + tb_disp_cursor_scale(size, py)
+    };
+    return p;
+}
+
+static void tb_disp_draw_cursor(struct tb_display *d) {
+    if (!d || !d->cursor_visible || d->cursor_source_w <= 0 || d->cursor_source_h <= 0) return;
+
+    int out_w = 0, out_h = 0;
+    if (SDL_GetRendererOutputSize(d->ren, &out_w, &out_h) < 0 || out_w <= 0 || out_h <= 0) {
+        return;
+    }
+
+    const double sx = (double)out_w / (double)d->cursor_source_w;
+    const double sy = (double)out_h / (double)d->cursor_source_h;
+    const int x = (int)((double)d->cursor_x * sx);
+    const int y = (int)((double)d->cursor_y * sy);
+    const int size = out_w >= 5000 ? 58 : 44;
+    SDL_BlendMode old_blend = SDL_BLENDMODE_NONE;
+    (void)SDL_GetRenderDrawBlendMode(d->ren, &old_blend);
+
+    SDL_Point shadow[] = {
+        tb_disp_cursor_point(x + 2, y + 3, size, 0, 0),
+        tb_disp_cursor_point(x + 2, y + 3, size, 0, 33),
+        tb_disp_cursor_point(x + 2, y + 3, size, 7, 25),
+        tb_disp_cursor_point(x + 2, y + 3, size, 13, 38),
+        tb_disp_cursor_point(x + 2, y + 3, size, 20, 35),
+        tb_disp_cursor_point(x + 2, y + 3, size, 14, 22),
+        tb_disp_cursor_point(x + 2, y + 3, size, 24, 22)
+    };
+    SDL_SetRenderDrawBlendMode(d->ren, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 70);
+    tb_disp_fill_poly(d->ren, shadow, (int)(sizeof(shadow) / sizeof(shadow[0])));
+
+    SDL_Point outline[] = {
+        tb_disp_cursor_point(x, y, size, 0, 0),
+        tb_disp_cursor_point(x, y, size, 0, 33),
+        tb_disp_cursor_point(x, y, size, 7, 25),
+        tb_disp_cursor_point(x, y, size, 13, 38),
+        tb_disp_cursor_point(x, y, size, 20, 35),
+        tb_disp_cursor_point(x, y, size, 14, 22),
+        tb_disp_cursor_point(x, y, size, 24, 22)
+    };
+    SDL_SetRenderDrawColor(d->ren, 255, 255, 255, 255);
+    tb_disp_fill_poly(d->ren, outline, (int)(sizeof(outline) / sizeof(outline[0])));
+    tb_disp_draw_poly_outline(d->ren, outline, (int)(sizeof(outline) / sizeof(outline[0])));
+
+    SDL_Point body[] = {
+        tb_disp_cursor_point(x, y, size, 3, 5),
+        tb_disp_cursor_point(x, y, size, 3, 27),
+        tb_disp_cursor_point(x, y, size, 8, 21),
+        tb_disp_cursor_point(x, y, size, 14, 34),
+        tb_disp_cursor_point(x, y, size, 16, 33),
+        tb_disp_cursor_point(x, y, size, 11, 20),
+        tb_disp_cursor_point(x, y, size, 19, 20)
+    };
+    SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 255);
+    tb_disp_fill_poly(d->ren, body, (int)(sizeof(body) / sizeof(body[0])));
+    tb_disp_draw_poly_outline(d->ren, body, (int)(sizeof(body) / sizeof(body[0])));
+
+    SDL_SetRenderDrawBlendMode(d->ren, old_blend);
+}
+
+static void tb_disp_render_current(struct tb_display *d) {
+    if (!d || !d->tex) return;
+    SDL_RenderClear(d->ren);
+    SDL_RenderCopy(d->ren, d->tex, NULL, NULL);
+    tb_disp_draw_cursor(d);
+    SDL_RenderPresent(d->ren);
+}
+
 void tb_disp_render_nv12(struct tb_display *d,
                          const uint8_t *y, int y_stride,
                          const uint8_t *uv, int uv_stride,
@@ -328,9 +465,22 @@ void tb_disp_render_nv12(struct tb_display *d,
         fprintf(stderr, "[disp] UpdateNVTexture: %s\n", SDL_GetError());
         return;
     }
-    SDL_RenderClear(d->ren);
-    SDL_RenderCopy(d->ren, d->tex, NULL, NULL);
-    SDL_RenderPresent(d->ren);
+    tb_disp_render_current(d);
+}
+
+void tb_disp_set_cursor(struct tb_display *d,
+                        int x, int y,
+                        int source_w, int source_h,
+                        int visible) {
+    if (!d) return;
+    d->cursor_x = x;
+    d->cursor_y = y;
+    d->cursor_source_w = source_w > 0 ? source_w : 1;
+    d->cursor_source_h = source_h > 0 ? source_h : 1;
+    d->cursor_visible = visible;
+    if (d->is_connected && d->tex) {
+        tb_disp_render_current(d);
+    }
 }
 
 int tb_disp_poll_quit(struct tb_display *d) {
@@ -398,11 +548,11 @@ void tb_disp_render_status(struct tb_display *d,
 
     tb_disp_set_connection_state(d, 0);
 
-    if (!ip) ip = "non rilevato";
-    if (!status) status = "in attesa del sender";
-    if (!sender) sender = "in attesa";
-    if (!panel) panel = "pannello sconosciuto";
-    if (!mode) mode = "2560 x 1440 hidpi su pannello 5k";
+    if (!ip) ip = "not detected";
+    if (!status) status = "waiting for sender";
+    if (!sender) sender = "waiting";
+    if (!panel) panel = "unknown display";
+    if (!mode) mode = "2560 x 1440 HiDPI on 5K display";
 
     int drawable_w = 0, drawable_h = 0;
     if (SDL_GetRendererOutputSize(d->ren, &drawable_w, &drawable_h) < 0 ||

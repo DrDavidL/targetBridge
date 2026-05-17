@@ -10,11 +10,14 @@ final class ReceiverBackedVirtualDisplaySession {
     private var virtualDisplay: CGVirtualDisplay?
     private(set) var displayID: CGDirectDisplayID = kCGNullDirectDisplay
     private(set) var displayName: String = ""
+    private let displayQueue = DispatchQueue(label: "fd.tbmonitor.sender.virtual-display", qos: .userInitiated)
 
-    func create(from profile: TBMonitorDisplayProfile) -> Bool {
+    func create(from profile: TBMonitorDisplayProfile, refreshRate: Double? = nil) -> Bool {
         destroy()
+        let preferredRefreshRate = refreshRate ?? profile.refreshRate
 
         let descriptor = CGVirtualDisplayDescriptor()
+        descriptor.queue = displayQueue
         descriptor.name = "TB Monitor - \(profile.receiverName)"
         descriptor.vendorID = 0xEEEE
         descriptor.productID = 0x5000
@@ -34,15 +37,20 @@ final class ReceiverBackedVirtualDisplaySession {
 
         let settings = CGVirtualDisplaySettings()
         settings.hiDPI = profile.hiDPI
-        settings.modes = [
-            CGVirtualDisplayMode(
-                width: UInt(profile.modeWidth),
-                height: UInt(profile.modeHeight),
-                refreshRate: profile.refreshRate
-            )
-        ]
+        guard let mode = CGVirtualDisplayMode(
+            width: UInt(profile.modeWidth),
+            height: UInt(profile.modeHeight),
+            refreshRate: preferredRefreshRate
+        ) else {
+            return false
+        }
+        settings.modes = [mode]
 
         guard display.apply(settings), display.displayID != kCGNullDirectDisplay else {
+            return false
+        }
+
+        guard activatePreferredMode(for: display.displayID, profile: profile, refreshRate: preferredRefreshRate) else {
             return false
         }
 
@@ -56,5 +64,36 @@ final class ReceiverBackedVirtualDisplaySession {
         virtualDisplay = nil
         displayID = kCGNullDirectDisplay
         displayName = ""
+    }
+
+    private func activatePreferredMode(for displayID: CGDirectDisplayID, profile: TBMonitorDisplayProfile, refreshRate: Double) -> Bool {
+        let timeout = Date().addingTimeInterval(2.0)
+        while Date() < timeout {
+            if let preferredMode = preferredMode(for: displayID, profile: profile, refreshRate: refreshRate) {
+                return CGDisplaySetDisplayMode(displayID, preferredMode, nil) == .success
+            }
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+        return false
+    }
+
+    private func preferredMode(for displayID: CGDirectDisplayID, profile: TBMonitorDisplayProfile, refreshRate: Double) -> CGDisplayMode? {
+        guard let modes = CGDisplayCopyAllDisplayModes(displayID, nil) as? [CGDisplayMode] else {
+            return nil
+        }
+
+        let exactMatch = modes.first { mode in
+            mode.width == profile.modeWidth
+                && mode.height == profile.modeHeight
+                && abs(mode.refreshRate - refreshRate) < 0.5
+        }
+        if let exactMatch {
+            return exactMatch
+        }
+
+        return modes.first { mode in
+            mode.width == profile.modeWidth
+                && mode.height == profile.modeHeight
+        }
     }
 }

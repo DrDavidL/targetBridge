@@ -110,6 +110,8 @@ int tb_net_accept(int server_fd) {
     if (c < 0) return -1;
     int fl = fcntl(c, F_GETFL, 0);
     fcntl(c, F_SETFL, fl | O_NONBLOCK);
+    int rcvbuf = 4 * 1024 * 1024;
+    setsockopt(c, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
     /* disable Nagle for low latency */
     int yes = 1;
     setsockopt(c, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes));

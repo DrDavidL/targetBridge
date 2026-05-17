@@ -4,12 +4,16 @@ import CoreMedia
 import CoreVideo
 import Darwin
 import Foundation
+import IOSurface
 import Network
 @preconcurrency import ScreenCaptureKit
 import VideoToolbox
 
 enum TBDisplayCapturePreset: String, CaseIterable, Identifiable {
     case standard1440p
+    case smooth1440p60
+    case smooth1800p60
+    case crisp2160p48
     case native5k
 
     var id: String { rawValue }
@@ -18,6 +22,12 @@ enum TBDisplayCapturePreset: String, CaseIterable, Identifiable {
         switch self {
         case .standard1440p:
             return "Standard"
+        case .smooth1440p60:
+            return "Smooth"
+        case .smooth1800p60:
+            return "Smooth+"
+        case .crisp2160p48:
+            return "Crisp"
         case .native5k:
             return "5K"
         }
@@ -27,15 +37,25 @@ enum TBDisplayCapturePreset: String, CaseIterable, Identifiable {
         switch self {
         case .standard1440p:
             return "2560 × 1440"
+        case .smooth1440p60:
+            return "2560 × 1440 @ 60"
+        case .smooth1800p60:
+            return "3200 × 1800 @ 60"
+        case .crisp2160p48:
+            return "3840 × 2160 @ 48"
         case .native5k:
-            return "5120 × 2880"
+            return "5120 × 2880 @ 48"
         }
     }
 
     var width: Int {
         switch self {
-        case .standard1440p:
+        case .standard1440p, .smooth1440p60:
             return 2560
+        case .smooth1800p60:
+            return 3200
+        case .crisp2160p48:
+            return 3840
         case .native5k:
             return 5120
         }
@@ -43,8 +63,12 @@ enum TBDisplayCapturePreset: String, CaseIterable, Identifiable {
 
     var height: Int {
         switch self {
-        case .standard1440p:
+        case .standard1440p, .smooth1440p60:
             return 1440
+        case .smooth1800p60:
+            return 1800
+        case .crisp2160p48:
+            return 2160
         case .native5k:
             return 2880
         }
@@ -54,25 +78,31 @@ enum TBDisplayCapturePreset: String, CaseIterable, Identifiable {
         switch self {
         case .standard1440p:
             return 36_000_000
+        case .smooth1440p60:
+            return 52_000_000
+        case .smooth1800p60:
+            return 78_000_000
+        case .crisp2160p48:
+            return 105_000_000
         case .native5k:
-            return 72_000_000
+            return 120_000_000
         }
     }
 
     var codecName: String {
         switch self {
-        case .standard1440p:
+        case .standard1440p, .smooth1440p60, .smooth1800p60:
             return "H.264"
-        case .native5k:
+        case .crisp2160p48, .native5k:
             return "HEVC"
         }
     }
 
     var codecType: CMVideoCodecType {
         switch self {
-        case .standard1440p:
+        case .standard1440p, .smooth1440p60, .smooth1800p60:
             return kCMVideoCodecType_H264
-        case .native5k:
+        case .crisp2160p48, .native5k:
             return kCMVideoCodecType_HEVC
         }
     }
@@ -80,9 +110,13 @@ enum TBDisplayCapturePreset: String, CaseIterable, Identifiable {
     var queueDepth: Int {
         switch self {
         case .standard1440p:
-            return 3
+            return 4
+        case .smooth1440p60:
+            return 1
+        case .smooth1800p60, .crisp2160p48:
+            return 1
         case .native5k:
-            return 2
+            return 1
         }
     }
 
@@ -90,8 +124,14 @@ enum TBDisplayCapturePreset: String, CaseIterable, Identifiable {
         switch self {
         case .standard1440p:
             return 30
+        case .smooth1440p60:
+            return 60
+        case .smooth1800p60:
+            return 60
+        case .crisp2160p48:
+            return 48
         case .native5k:
-            return 24
+            return 48
         }
     }
 
@@ -99,8 +139,14 @@ enum TBDisplayCapturePreset: String, CaseIterable, Identifiable {
         switch self {
         case .standard1440p:
             return 60
+        case .smooth1440p60:
+            return 60
+        case .smooth1800p60:
+            return 60
+        case .crisp2160p48:
+            return 48
         case .native5k:
-            return 24
+            return 48
         }
     }
 
@@ -108,6 +154,10 @@ enum TBDisplayCapturePreset: String, CaseIterable, Identifiable {
         switch self {
         case .standard1440p:
             return 2
+        case .smooth1440p60:
+            return 1
+        case .smooth1800p60, .crisp2160p48:
+            return 1
         case .native5k:
             return 1
         }
@@ -117,9 +167,126 @@ enum TBDisplayCapturePreset: String, CaseIterable, Identifiable {
         switch self {
         case .standard1440p:
             return false
-        case .native5k:
+        case .smooth1440p60, .smooth1800p60, .crisp2160p48, .native5k:
             return true
         }
+    }
+
+    var maxPendingVideoPackets: Int {
+        switch self {
+        case .standard1440p:
+            return 8
+        case .smooth1440p60:
+            return 1
+        case .smooth1800p60, .crisp2160p48:
+            return 1
+        case .native5k:
+            return 1
+        }
+    }
+
+    var maxFrameDelayCount: Int {
+        switch self {
+        case .standard1440p:
+            return 1
+        case .smooth1440p60, .smooth1800p60, .crisp2160p48, .native5k:
+            return 0
+        }
+    }
+
+    var dropsBeforeEncodeWhenBacklogged: Bool {
+        switch self {
+        case .standard1440p:
+            return false
+        case .smooth1440p60, .smooth1800p60, .crisp2160p48, .native5k:
+            return true
+        }
+    }
+
+    var maxInFlightEncodeFrames: Int {
+        switch self {
+        case .standard1440p:
+            return 3
+        case .smooth1440p60, .smooth1800p60:
+            return 2
+        case .crisp2160p48, .native5k:
+            return 1
+        }
+    }
+
+    var captureResolution: SCCaptureResolutionType {
+        switch self {
+        case .standard1440p, .smooth1440p60, .smooth1800p60:
+            return .nominal
+        case .crisp2160p48, .native5k:
+            return .best
+        }
+    }
+
+    var virtualDisplayRefreshRate: Double {
+        switch self {
+        case .standard1440p:
+            return 60
+        case .smooth1440p60, .smooth1800p60:
+            return 60
+        case .crisp2160p48, .native5k:
+            return 48
+        }
+    }
+}
+
+private final class TBDirectDisplayStreamCapture {
+    private let serviceRef: UnsafeMutableRawPointer
+    private let queue: DispatchQueue
+    private var stream: CGDisplayStream?
+
+    init(service: TBDisplaySenderService, queue: DispatchQueue) {
+        self.serviceRef = Unmanaged.passUnretained(service).toOpaque()
+        self.queue = queue
+    }
+
+    func start(displayID: CGDirectDisplayID, preset: TBDisplayCapturePreset) -> Bool {
+        let properties: NSDictionary = [
+            CGDisplayStream.showCursor: false,
+            CGDisplayStream.queueDepth: preset.queueDepth,
+            CGDisplayStream.minimumFrameTime: 1.0 / Double(preset.expectedFrameRate)
+        ]
+
+        let serviceRefValue = UInt(bitPattern: serviceRef)
+        let displayStream = CGDisplayStream(
+            dispatchQueueDisplay: displayID,
+            outputWidth: preset.width,
+            outputHeight: preset.height,
+            pixelFormat: Int32(kCVPixelFormatType_32BGRA),
+            properties: properties,
+            queue: queue
+        ) { status, displayTime, surface, _ in
+            guard status == .frameComplete, let surface else { return }
+            let surfaceRefValue = UInt(bitPattern: Unmanaged.passRetained(surface).toOpaque())
+            DispatchQueue.main.async {
+                guard let serviceRef = UnsafeRawPointer(bitPattern: serviceRefValue),
+                      let surfaceRef = UnsafeRawPointer(bitPattern: surfaceRefValue) else {
+                    return
+                }
+                let service = Unmanaged<TBDisplaySenderService>.fromOpaque(serviceRef).takeUnretainedValue()
+                let surface = Unmanaged<IOSurface>.fromOpaque(surfaceRef).takeRetainedValue()
+                MainActor.assumeIsolated {
+                    service.encodeDisplaySurface(surface, displayTime: displayTime)
+                }
+            }
+        }
+
+        guard let displayStream, displayStream.start() == .success else {
+            return false
+        }
+
+        stream = displayStream
+        return true
+    }
+
+    func stop() {
+        stream?.stop()
+        stream = nil
     }
 }
 
@@ -161,6 +328,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
 
     private var captureDelegate: CaptureDelegate?
     private var scStream: SCStream?
+    private var directDisplayStream: TBDirectDisplayStreamCapture?
     private var vtEncoder: VTCompressionSession?
     private var vtEncoderRef: Unmanaged<TBDisplaySenderService>?
 
@@ -170,18 +338,45 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
     private var fpsTimer: Timer?
     private var heartbeatTimer: Timer?
     private var firstFrameTimer: Timer?
+    private var cursorTimer: Timer?
     private var heartbeatSequence: UInt64 = 0
     private var statusState: TBDisplaySenderStatusState = .ready
     private var streamingActivity: NSObjectProtocol?
+    private var pendingVideoPackets = 0
+    private var inFlightEncodeFrames = 0
+    private var displayStreamFrameSequence: CMTimeValue = 0
+    private var baselineDisplayIDs = Set<CGDirectDisplayID>()
+    private var cursorDisplayID: CGDirectDisplayID = kCGNullDirectDisplay
+    private var lastCursorPacket: TBMonitorCursor?
 
     private final class CaptureDelegate: NSObject, SCStreamOutput, SCStreamDelegate {
         var onFrame: ((CMSampleBuffer) -> Void)?
         var onError: ((Error) -> Void)?
 
+        private static func shouldProcessFrame(_ sampleBuffer: CMSampleBuffer) -> Bool {
+            guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false)
+                as? [[SCStreamFrameInfo: Any]],
+                  let rawStatus = attachments.first?[SCStreamFrameInfo.status] as? Int,
+                  let status = SCFrameStatus(rawValue: rawStatus)
+            else {
+                return true
+            }
+
+            switch status {
+            case .complete, .started:
+                return true
+            case .idle, .blank, .suspended, .stopped:
+                return false
+            @unknown default:
+                return true
+            }
+        }
+
         nonisolated func stream(_ stream: SCStream,
                                 didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
                                 of type: SCStreamOutputType) {
             guard type == .screen else { return }
+            guard Self.shouldProcessFrame(sampleBuffer) else { return }
             onFrame?(sampleBuffer)
         }
 
@@ -246,8 +441,11 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         activeProfile = nil
         setStatus(.connecting(receiverIP))
 
-        let params = NWParameters.tcp
+        let tcpOptions = NWProtocolTCP.Options()
+        tcpOptions.noDelay = true
+        let params = NWParameters(tls: nil, tcp: tcpOptions)
         params.allowLocalEndpointReuse = true
+        params.serviceClass = .interactiveVideo
         let conn = NWConnection(
             host: NWEndpoint.Host(receiverIP),
             port: NWEndpoint.Port(integerLiteral: TBMonitorProtocol.port),
@@ -289,8 +487,14 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         heartbeatTimer = nil
         firstFrameTimer?.invalidate()
         firstFrameTimer = nil
+        cursorTimer?.invalidate()
+        cursorTimer = nil
         fpsTimer?.invalidate()
         fpsTimer = nil
+        if let directDisplayStream {
+            directDisplayStream.stop()
+            self.directDisplayStream = nil
+        }
         scStream?.stopCapture(completionHandler: nil)
         scStream = nil
         captureDelegate = nil
@@ -319,6 +523,12 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         sentFrames = 0
         sentSnapshot = 0
         sessionAckSent = false
+        pendingVideoPackets = 0
+        inFlightEncodeFrames = 0
+        displayStreamFrameSequence = 0
+        baselineDisplayIDs = []
+        cursorDisplayID = kCGNullDirectDisplay
+        lastCursorPacket = nil
     }
 
     private func sendHello() {
@@ -405,7 +615,8 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         setStatus(.creatingVirtualDisplay)
 
         Task { @MainActor in
-            guard self.session.create(from: profile) else {
+            self.baselineDisplayIDs = await self.fetchShareableDisplayIDs()
+            guard self.session.create(from: profile, refreshRate: self.capturePreset.virtualDisplayRefreshRate) else {
                 self.setStatus(.virtualDisplayCreationFailed)
                 self.stop(resetStatusTo: nil)
                 return
@@ -431,16 +642,24 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
 
     private func startCapture(for profile: TBMonitorDisplayProfile) async -> Bool {
         do {
-            let display = try await waitForSourceDisplay(excluding: session.displayID)
+            let display = try await waitForVirtualDisplay(
+                matching: session.displayID,
+                baselineDisplayIDs: baselineDisplayIDs
+            )
             let preset = capturePreset
+            if startDirectDisplayStream(for: display, preset: preset) {
+                return true
+            }
+
             let configuration = SCStreamConfiguration()
             configuration.width = preset.width
             configuration.height = preset.height
             configuration.minimumFrameInterval = CMTime(value: 1, timescale: Int32(preset.expectedFrameRate))
             configuration.queueDepth = preset.queueDepth
-            configuration.pixelFormat = kCVPixelFormatType_32BGRA
-            configuration.showsCursor = true
+            configuration.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+            configuration.showsCursor = false
             configuration.scalesToFit = true
+            configuration.captureResolution = preset.captureResolution
 
             setupEncoder(
                 width: preset.width,
@@ -474,6 +693,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
             try await stream.startCapture()
             scStream = stream
             isStreaming = true
+            startCursorUpdates(displayID: display.displayID)
             streamingActivity = ProcessInfo.processInfo.beginActivity(
                 options: .userInitiatedAllowingIdleSystemSleep,
                 reason: "TargetBridge streaming active"
@@ -490,7 +710,39 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         }
     }
 
-    private func waitForSourceDisplay(excluding excludedDisplayID: CGDirectDisplayID) async throws -> SCDisplay {
+    private func startDirectDisplayStream(for display: SCDisplay, preset: TBDisplayCapturePreset) -> Bool {
+        setupEncoder(
+            width: preset.width,
+            height: preset.height,
+            preset: preset,
+            codecType: preset.codecType,
+            averageBitRate: preset.averageBitRate
+        )
+        guard vtEncoder != nil else { return false }
+
+        displayStreamFrameSequence = 0
+        streamResolutionText = "\(preset.description) (\(preset.title), \(preset.codecName))"
+
+        let directCapture = TBDirectDisplayStreamCapture(service: self, queue: connectionQueue)
+        guard directCapture.start(displayID: display.displayID, preset: preset) else {
+            return false
+        }
+
+        directDisplayStream = directCapture
+        isStreaming = true
+        startCursorUpdates(displayID: display.displayID)
+        streamingActivity = ProcessInfo.processInfo.beginActivity(
+            options: .userInitiatedAllowingIdleSystemSleep,
+            reason: "TargetBridge streaming active"
+        )
+        startFPSTimer()
+        return true
+    }
+
+    private func waitForVirtualDisplay(
+        matching targetDisplayID: CGDirectDisplayID,
+        baselineDisplayIDs: Set<CGDirectDisplayID>
+    ) async throws -> SCDisplay {
         enum DisplayLookupError: LocalizedError {
             case notFound(details: String)
 
@@ -502,29 +754,59 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
             }
         }
 
-        for _ in 0..<12 {
+        var lastContent: SCShareableContent?
+        for _ in 0..<80 {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-            let mainDisplayID = CGMainDisplayID()
-            if mainDisplayID != excludedDisplayID,
-               let display = content.displays.first(where: { $0.displayID == mainDisplayID }) {
+            lastContent = content
+            if let display = content.displays.first(where: { $0.displayID == targetDisplayID }) {
                 return display
             }
-
-            if let display = content.displays.first(where: { $0.displayID != excludedDisplayID }) {
+            if let display = content.displays.first(where: { !baselineDisplayIDs.contains($0.displayID) }) {
                 return display
-            }
-
-            if let fallbackDisplay = content.displays.first {
-                return fallbackDisplay
             }
             try await Task.sleep(nanoseconds: 250_000_000)
         }
 
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-        let availableIDs = content.displays.map { String($0.displayID) }.joined(separator: ", ")
+        let content: SCShareableContent
+        if let lastContent {
+            content = lastContent
+        } else {
+            content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+        }
+        let availableIDs = content.displays.map { String($0.displayID) }.sorted().joined(separator: ", ")
+        let baselineIDs = baselineDisplayIDs.map(String.init).sorted().joined(separator: ", ")
+        let onlineIDs = onlineDisplayIDs().map(String.init).sorted().joined(separator: ", ")
+        if let fallbackDisplay = content.displays.first {
+            NSLog(
+                "TargetBridge: virtual display not exposed to ScreenCaptureKit; falling back to SCDisplay %@. target=%u baseline=[%@] available=[%@] online=[%@]",
+                String(fallbackDisplay.displayID),
+                targetDisplayID,
+                baselineIDs,
+                availableIDs,
+                onlineIDs
+            )
+            return fallbackDisplay
+        }
         throw DisplayLookupError.notFound(
-            details: "nessun SCDisplay disponibile (main=\(CGMainDisplayID()), escluso=\(excludedDisplayID), disponibili=[\(availableIDs)])"
+            details: "nessun SCDisplay virtuale disponibile (target=\(targetDisplayID), baseline=[\(baselineIDs)], disponibili=[\(availableIDs)], online=[\(onlineIDs)])"
         )
+    }
+
+    private func fetchShareableDisplayIDs() async -> Set<CGDirectDisplayID> {
+        do {
+            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+            return Set(content.displays.map(\.displayID))
+        } catch {
+            return []
+        }
+    }
+
+    private func onlineDisplayIDs() -> [CGDirectDisplayID] {
+        var count: UInt32 = 0
+        guard CGGetOnlineDisplayList(0, nil, &count) == .success, count > 0 else { return [] }
+        var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        guard CGGetOnlineDisplayList(count, &displays, &count) == .success else { return [] }
+        return Array(displays.prefix(Int(count)))
     }
 
     private func setupEncoder(width: Int, height: Int, preset: TBDisplayCapturePreset, codecType: CMVideoCodecType, averageBitRate: Int) {
@@ -534,15 +816,18 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         vtEncoderRef = nil
 
         let spec: NSDictionary = [
-            kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder: true
+            kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder: true,
+            kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: true
         ]
         let retained = Unmanaged.passRetained(self)
         vtEncoderRef = retained
 
         let callback: VTCompressionOutputCallback = { ref, _, status, _, sampleBuffer in
-            guard let ref, status == noErr, let sampleBuffer else { return }
+            guard let ref else { return }
             let service = Unmanaged<TBDisplaySenderService>.fromOpaque(ref).takeUnretainedValue()
             DispatchQueue.main.async {
+                service.inFlightEncodeFrames = max(0, service.inFlightEncodeFrames - 1)
+                guard status == noErr, let sampleBuffer else { return }
                 service.handleEncoded(sampleBuffer)
             }
         }
@@ -575,7 +860,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: NSNumber(value: preset.expectedFrameRate))
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: NSNumber(value: preset.maxKeyFrameInterval))
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, value: NSNumber(value: preset.maxKeyFrameIntervalDuration))
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: NSNumber(value: 1))
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: NSNumber(value: preset.maxFrameDelayCount))
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: NSNumber(value: averageBitRate))
         if preset.prioritizeSpeed {
             VTSessionSetProperty(session, key: kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality, value: kCFBooleanTrue)
@@ -588,8 +873,48 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         guard let encoder = vtEncoder,
               let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)
         else { return }
+        if capturePreset.dropsBeforeEncodeWhenBacklogged,
+           (pendingVideoPackets >= capturePreset.maxPendingVideoPackets ||
+            inFlightEncodeFrames >= capturePreset.maxInFlightEncodeFrames) {
+            return
+        }
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        VTCompressionSessionEncodeFrame(
+        encode(pixelBuffer: pixelBuffer, presentationTimeStamp: pts, using: encoder)
+    }
+
+    fileprivate func encodeDisplaySurface(_ surface: IOSurface, displayTime: UInt64) {
+        guard let encoder = vtEncoder else { return }
+        if capturePreset.dropsBeforeEncodeWhenBacklogged,
+           (pendingVideoPackets >= capturePreset.maxPendingVideoPackets ||
+            inFlightEncodeFrames >= capturePreset.maxInFlightEncodeFrames) {
+            return
+        }
+
+        let attrs: NSDictionary = [
+            kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey: capturePreset.width,
+            kCVPixelBufferHeightKey: capturePreset.height,
+            kCVPixelBufferIOSurfacePropertiesKey: NSDictionary()
+        ]
+        var unmanagedPixelBuffer: Unmanaged<CVPixelBuffer>?
+        guard CVPixelBufferCreateWithIOSurface(
+            kCFAllocatorDefault,
+            surface,
+            attrs,
+            &unmanagedPixelBuffer
+        ) == kCVReturnSuccess, let unmanagedPixelBuffer else {
+            return
+        }
+        let pixelBuffer = unmanagedPixelBuffer.takeRetainedValue()
+
+        displayStreamFrameSequence += 1
+        let pts = CMTime(value: displayStreamFrameSequence, timescale: Int32(capturePreset.expectedFrameRate))
+        encode(pixelBuffer: pixelBuffer, presentationTimeStamp: pts, using: encoder)
+    }
+
+    private func encode(pixelBuffer: CVPixelBuffer, presentationTimeStamp pts: CMTime, using encoder: VTCompressionSession) {
+        inFlightEncodeFrames += 1
+        let status = VTCompressionSessionEncodeFrame(
             encoder,
             imageBuffer: pixelBuffer,
             presentationTimeStamp: pts,
@@ -598,6 +923,9 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
             sourceFrameRefcon: nil,
             infoFlagsOut: nil
         )
+        if status != noErr {
+            inFlightEncodeFrames = max(0, inFlightEncodeFrames - 1)
+        }
     }
 
     private func handleEncoded(_ sampleBuffer: CMSampleBuffer) {
@@ -622,6 +950,10 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         let notSync = attachments?.first?[kCMSampleAttachmentKey_NotSync] as? Bool ?? false
         let isKeyframe = !notSync
 
+        if !isKeyframe, pendingVideoPackets >= capturePreset.maxPendingVideoPackets {
+            return
+        }
+
         if isKeyframe,
            let format = CMSampleBufferGetFormatDescription(sampleBuffer),
            let packet = buildParamSetsPacket(from: format, codecType: capturePreset.codecType) {
@@ -629,7 +961,14 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         }
 
         if let packet = buildFramePacket(from: sampleBuffer) {
-            connection.send(content: packet, completion: .contentProcessed({ _ in }))
+            pendingVideoPackets += 1
+            connection.send(content: packet, completion: .contentProcessed({ [weak self] _ in
+                guard let self else { return }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    pendingVideoPackets = max(0, pendingVideoPackets - 1)
+                }
+            }))
             sentFrames += 1
         }
     }
@@ -715,6 +1054,59 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         }
         guard status == kCMBlockBufferNoErr else { return nil }
         return TBMonitorProtocol.makePacket(type: .frame, payload: payload)
+    }
+
+    private func startCursorUpdates(displayID: CGDirectDisplayID) {
+        cursorTimer?.invalidate()
+        cursorDisplayID = displayID
+        lastCursorPacket = nil
+
+        let timer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            MainActor.assumeIsolated {
+                sendCursorUpdateIfNeeded()
+            }
+        }
+        cursorTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+        sendCursorUpdateIfNeeded(force: true)
+    }
+
+    private func sendCursorUpdateIfNeeded(force: Bool = false) {
+        guard isConnected, isStreaming, cursorDisplayID != kCGNullDirectDisplay else { return }
+        guard let point = CGEvent(source: nil)?.location else { return }
+
+        let bounds = CGDisplayBounds(cursorDisplayID)
+        guard bounds.width > 0, bounds.height > 0 else { return }
+
+        let localX = point.x - bounds.origin.x
+        let localY = point.y - bounds.origin.y
+        let visible = localX >= 0 && localY >= 0 && localX <= bounds.width && localY <= bounds.height
+
+        let scaledX = Int((max(0, min(bounds.width, localX)) / bounds.width) * Double(capturePreset.width))
+        let scaledY = Int((max(0, min(bounds.height, localY)) / bounds.height) * Double(capturePreset.height))
+        let cursor = TBMonitorCursor(
+            x: scaledX,
+            y: scaledY,
+            width: capturePreset.width,
+            height: capturePreset.height,
+            visible: visible
+        )
+
+        if !force, let previous = lastCursorPacket {
+            let movement = abs(previous.x - cursor.x) + abs(previous.y - cursor.y)
+            if movement < 2,
+               previous.visible == cursor.visible,
+               previous.width == cursor.width,
+               previous.height == cursor.height {
+                return
+            }
+        }
+
+        lastCursorPacket = cursor
+        if let packet = TBMonitorProtocol.makeJSONPacket(type: .cursor, value: cursor) {
+            send(packet)
+        }
     }
 
     private func startFPSTimer() {

@@ -84,14 +84,14 @@ enum TBDisplaySenderStatusState {
         case (.virtualDisplayCreationFailed, .italian): return "Creazione virtual display fallita"
         case (.virtualDisplayCreationFailed, .english): return "Virtual display creation failed"
 
-        case let (.startingCapture(resolution), .italian): return "Avvio cattura del desktop principale (\(resolution))…"
-        case let (.startingCapture(resolution), .english): return "Starting main desktop capture (\(resolution))…"
+        case let (.startingCapture(resolution), .italian): return "Avvio cattura del virtual display iMac (\(resolution))…"
+        case let (.startingCapture(resolution), .english): return "Starting iMac virtual display capture (\(resolution))…"
 
         case (.captureStartedWaitingFirstFrame, .italian): return "Cattura avviata, attendo il primo frame…"
         case (.captureStartedWaitingFirstFrame, .english): return "Capture started, waiting for the first frame…"
 
-        case let (.captureActive(resolution, codec), .italian): return "Duplicazione desktop attiva (\(resolution), \(codec))"
-        case let (.captureActive(resolution, codec), .english): return "Desktop duplication active (\(resolution), \(codec))"
+        case let (.captureActive(resolution, codec), .italian): return "Virtual display iMac attivo (\(resolution), \(codec))"
+        case let (.captureActive(resolution, codec), .english): return "iMac virtual display active (\(resolution), \(codec))"
 
         case let (.captureError(error), .italian): return "Errore capture: \(error)"
         case let (.captureError(error), .english): return "Capture error: \(error)"
@@ -119,9 +119,9 @@ enum TBDisplaySenderL10n {
     static func appSubtitle(_ language: TBDisplaySenderLanguage) -> String {
         switch language {
         case .italian:
-            return "Crea la sessione monitor per macOS, duplica il desktop principale e lo invia al receiver 5K."
+            return "Crea un display virtuale iMac su macOS e ne invia il contenuto al receiver 5K."
         case .english:
-            return "Creates the macOS monitor session, duplicates the main desktop, and sends it to the 5K receiver."
+            return "Creates an iMac virtual display on macOS and sends its contents to the 5K receiver."
         }
     }
 
@@ -168,18 +168,18 @@ enum TBDisplaySenderL10n {
     static func streamHint1(_ language: TBDisplaySenderLanguage) -> String {
         switch language {
         case .italian:
-            return "`Standard` mantiene il profilo attuale. `5K` prova la cattura a 5120 × 2880 mantenendo la duplicazione del desktop principale."
+            return "`Smooth+` privilegia fluidità. `Crisp` aumenta la nitidezza del testo. `5K` massimizza i pixel."
         case .english:
-            return "`Standard` keeps the current profile. `5K` tries 5120 × 2880 capture while still duplicating the main desktop."
+            return "`Smooth+` prioritizes motion. `Crisp` improves text clarity. `5K` maximizes pixels."
         }
     }
 
     static func streamHint2(_ language: TBDisplaySenderLanguage) -> String {
         switch language {
         case .italian:
-            return "Il profilo `5K` usa `HEVC` con tuning più aggressivo sulla latenza."
+            return "`Crisp` usa 3840 × 2160 @ 48 FPS con HEVC: più chiaro di Smooth+, più leggero di 5K."
         case .english:
-            return "The `5K` profile uses `HEVC` with more aggressive latency tuning."
+            return "`Crisp` uses 3840 × 2160 @ 48 FPS with HEVC: clearer than Smooth+, lighter than 5K."
         }
     }
 
@@ -223,8 +223,8 @@ enum TBDisplaySenderL10n {
 
     static func modeLine3(_ language: TBDisplaySenderLanguage) -> String {
         switch language {
-        case .italian: return "Pipeline: sessione virtual display + desktop principale → ScreenCaptureKit → codec hardware → TCP"
-        case .english: return "Pipeline: virtual display session + main desktop → ScreenCaptureKit → hardware codec → TCP"
+        case .italian: return "Pipeline: sessione virtual display + virtual display iMac → ScreenCaptureKit → codec hardware → TCP"
+        case .english: return "Pipeline: virtual display session + iMac virtual display → ScreenCaptureKit → hardware codec → TCP"
         }
     }
 
@@ -237,8 +237,8 @@ enum TBDisplaySenderL10n {
 
     static func modeLine5(_ language: TBDisplaySenderLanguage) -> String {
         switch language {
-        case .italian: return "Puoi scegliere se restare sul profilo standard o provare la cattura 5K."
-        case .english: return "You can stay on the standard profile or try 5K capture."
+        case .italian: return "Usa Smooth per mouse e animazioni più fluidi; usa 5K per massima nitidezza."
+        case .english: return "Use Smooth for better mouse and animation motion; use 5K for maximum sharpness."
         }
     }
 
@@ -329,6 +329,12 @@ extension TBDisplayCapturePreset {
         switch (self, language) {
         case (.standard1440p, .italian): return "Standard"
         case (.standard1440p, .english): return "Standard"
+        case (.smooth1440p60, .italian): return "Smooth"
+        case (.smooth1440p60, .english): return "Smooth"
+        case (.smooth1800p60, .italian): return "Smooth+"
+        case (.smooth1800p60, .english): return "Smooth+"
+        case (.crisp2160p48, .italian): return "Crisp"
+        case (.crisp2160p48, .english): return "Crisp"
         case (.native5k, .italian): return "5K"
         case (.native5k, .english): return "5K"
         }
