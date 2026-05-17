@@ -245,9 +245,9 @@ private final class TBDirectDisplayStreamCapture {
         self.queue = queue
     }
 
-    func start(displayID: CGDirectDisplayID, preset: TBDisplayCapturePreset) -> Bool {
+    func start(displayID: CGDirectDisplayID, preset: TBDisplayCapturePreset, showCursor: Bool = false) -> Bool {
         let properties: NSDictionary = [
-            CGDisplayStream.showCursor: false,
+            CGDisplayStream.showCursor: showCursor,
             CGDisplayStream.queueDepth: preset.queueDepth,
             CGDisplayStream.minimumFrameTime: 1.0 / Double(preset.expectedFrameRate)
         ]
@@ -663,7 +663,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
             configuration.minimumFrameInterval = CMTime(value: 1, timescale: Int32(preset.expectedFrameRate))
             configuration.queueDepth = preset.queueDepth
             configuration.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
-            configuration.showsCursor = false
+            configuration.showsCursor = !largeCursor
             configuration.scalesToFit = true
             configuration.captureResolution = preset.captureResolution
 
@@ -699,7 +699,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
             try await stream.startCapture()
             scStream = stream
             isStreaming = true
-            startCursorUpdates(displayID: display.displayID)
+            if largeCursor { startCursorUpdates(displayID: display.displayID) }
             streamingActivity = ProcessInfo.processInfo.beginActivity(
                 options: .userInitiatedAllowingIdleSystemSleep,
                 reason: "TargetBridge streaming active"
@@ -730,13 +730,13 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         streamResolutionText = "\(preset.description) (\(preset.title), \(preset.codecName))"
 
         let directCapture = TBDirectDisplayStreamCapture(service: self, queue: connectionQueue)
-        guard directCapture.start(displayID: display.displayID, preset: preset) else {
+        guard directCapture.start(displayID: display.displayID, preset: preset, showCursor: !largeCursor) else {
             return false
         }
 
         directDisplayStream = directCapture
         isStreaming = true
-        startCursorUpdates(displayID: display.displayID)
+        if largeCursor { startCursorUpdates(displayID: display.displayID) }
         streamingActivity = ProcessInfo.processInfo.beginActivity(
             options: .userInitiatedAllowingIdleSystemSleep,
             reason: "TargetBridge streaming active"
