@@ -104,6 +104,7 @@ struct TBDisplaySenderContentView: View {
 
             Toggle(TBDisplaySenderL10n.showMenuBarIcon(service.language), isOn: $service.showsMenuBarIcon)
             Toggle(TBDisplaySenderL10n.largeCursor(service.language), isOn: $service.largeCursor)
+                .disabled(service.isConnected || service.isStreaming)
 
             HStack {
                 Spacer()
