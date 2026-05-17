@@ -727,7 +727,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
             isStreaming = true
             if largeCursor { startCursorUpdates(displayID: display.displayID) }
             streamingActivity = ProcessInfo.processInfo.beginActivity(
-                options: .userInitiatedAllowingIdleSystemSleep,
+                options: [.userInitiated, .idleSystemSleepDisabled],
                 reason: "TargetBridge streaming active"
             )
             startFPSTimer()
@@ -765,7 +765,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         isStreaming = true
         if largeCursor { startCursorUpdates(displayID: display.displayID) }
         streamingActivity = ProcessInfo.processInfo.beginActivity(
-            options: .userInitiatedAllowingIdleSystemSleep,
+            options: [.userInitiated, .idleSystemSleepDisabled],
             reason: "TargetBridge streaming active"
         )
         startFPSTimer()
