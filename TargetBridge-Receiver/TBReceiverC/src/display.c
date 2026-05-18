@@ -243,6 +243,7 @@ struct tb_display *tb_disp_create(int fullscreen) {
         fprintf(stderr, "[disp] SDL_Init: %s\n", SDL_GetError());
         return NULL;
     }
+    SDL_DisableScreenSaver();
 
     struct tb_display *d = (struct tb_display *)calloc(1, sizeof(*d));
     if (!d) return NULL;
@@ -306,6 +307,7 @@ void tb_disp_destroy(struct tb_display *d) {
     if (d->tex) SDL_DestroyTexture(d->tex);
     if (d->ren) SDL_DestroyRenderer(d->ren);
     if (d->win) SDL_DestroyWindow(d->win);
+    SDL_EnableScreenSaver();
     SDL_Quit();
     free(d);
 }

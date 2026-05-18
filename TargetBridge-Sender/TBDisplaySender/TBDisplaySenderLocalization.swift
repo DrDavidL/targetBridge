@@ -42,9 +42,9 @@ enum TBDisplaySenderStatusState {
     case receiverTerminatedSession
     case creatingVirtualDisplay
     case virtualDisplayCreationFailed
-    case startingCapture(String)
+    case startingCapture(String, TBDisplayCaptureSource)
     case captureStartedWaitingFirstFrame
-    case captureActive(String, String)
+    case captureActive(String, String, TBDisplayCaptureSource)
     case captureError(String)
     case captureDesktopError(String)
     case noShareableDisplay(String)
@@ -97,17 +97,20 @@ enum TBDisplaySenderStatusState {
         case (.virtualDisplayCreationFailed, .english): return "Virtual display creation failed"
         case (.virtualDisplayCreationFailed, .german): return "Virtuelles Display konnte nicht erstellt werden"
 
-        case let (.startingCapture(resolution), .italian): return "Avvio cattura del virtual display iMac (\(resolution))…"
-        case let (.startingCapture(resolution), .english): return "Starting iMac virtual display capture (\(resolution))…"
-        case let (.startingCapture(resolution), .german): return "Aufnahme des virtuellen iMac-Displays wird gestartet (\(resolution))…"
+        case let (.startingCapture(resolution, source), .italian):
+            return "Avvio \(source.title(language).lowercased()) (\(resolution))…"
+        case let (.startingCapture(resolution, source), .english):
+            return "Starting \(source.title(language).lowercased()) capture (\(resolution))…"
+        case let (.startingCapture(resolution, source), .german):
+            return "\(source.title(language)) wird gestartet (\(resolution))…"
 
         case (.captureStartedWaitingFirstFrame, .italian): return "Cattura avviata, attendo il primo frame…"
         case (.captureStartedWaitingFirstFrame, .english): return "Capture started, waiting for the first frame…"
         case (.captureStartedWaitingFirstFrame, .german): return "Aufnahme gestartet, warte auf ersten Bildinhalt…"
 
-        case let (.captureActive(resolution, codec), .italian): return "Virtual display iMac attivo (\(resolution), \(codec))"
-        case let (.captureActive(resolution, codec), .english): return "iMac virtual display active (\(resolution), \(codec))"
-        case let (.captureActive(resolution, codec), .german): return "Virtuelles iMac-Display aktiv (\(resolution), \(codec))"
+        case let (.captureActive(resolution, codec, source), .italian): return "\(source.title(language)) attivo (\(resolution), \(codec))"
+        case let (.captureActive(resolution, codec, source), .english): return "\(source.title(language)) active (\(resolution), \(codec))"
+        case let (.captureActive(resolution, codec, source), .german): return "\(source.title(language)) aktiv (\(resolution), \(codec))"
 
         case let (.captureError(error), .italian): return "Errore capture: \(error)"
         case let (.captureError(error), .english): return "Capture error: \(error)"
@@ -224,25 +227,33 @@ enum TBDisplaySenderL10n {
         }
     }
 
+    static func captureSource(_ language: TBDisplaySenderLanguage) -> String {
+        switch language {
+        case .italian: return "Sorgente"
+        case .english: return "Source"
+        case .german: return "Quelle"
+        }
+    }
+
     static func streamHint1(_ language: TBDisplaySenderLanguage) -> String {
         switch language {
         case .italian:
-            return "`Smooth+` privilegia fluidità. `Crisp` aumenta la nitidezza del testo. `5K` massimizza i pixel."
+            return "`Desktop esteso` usa il monitor virtuale. `Duplica MacBook` cattura il display principale."
         case .english:
-            return "`Smooth+` prioritizes motion. `Crisp` improves text clarity. `5K` maximizes pixels."
+            return "`Extended display` uses the virtual monitor. `Mirror MacBook` captures the main display."
         case .german:
-            return "`Smooth+` bevorzugt flüssige Bewegung. `Crisp` verbessert die Textschärfe. `5K` maximiert die Pixel."
+            return "`Erweiterter Desktop` nutzt das virtuelle Display. `MacBook spiegeln` erfasst das Hauptdisplay."
         }
     }
 
     static func streamHint2(_ language: TBDisplaySenderLanguage) -> String {
         switch language {
         case .italian:
-            return "`Crisp` usa 3840 × 2160 @ 48 FPS con HEVC: più chiaro di Smooth+, più leggero di 5K."
+            return "`Smooth+` privilegia fluidità. `Crisp` aumenta la nitidezza. `5K` massimizza i pixel."
         case .english:
-            return "`Crisp` uses 3840 × 2160 @ 48 FPS with HEVC: clearer than Smooth+, lighter than 5K."
+            return "`Smooth+` prioritizes motion. `Crisp` improves clarity. `5K` maximizes pixels."
         case .german:
-            return "`Crisp` verwendet 3840 × 2160 @ 48 FPS mit HEVC: klarer als Smooth+, ressourcenschonender als 5K."
+            return "`Smooth+` bevorzugt flüssige Bewegung. `Crisp` verbessert die Schärfe. `5K` maximiert die Pixel."
         }
     }
 
@@ -308,9 +319,9 @@ enum TBDisplaySenderL10n {
 
     static func modeLine3(_ language: TBDisplaySenderLanguage) -> String {
         switch language {
-        case .italian: return "Pipeline: sessione virtual display + virtual display iMac → ScreenCaptureKit → codec hardware → TCP"
-        case .english: return "Pipeline: virtual display session + iMac virtual display → ScreenCaptureKit → hardware codec → TCP"
-        case .german: return "Pipeline: Sitzung für virtuelles Display + virtuelles iMac-Display → ScreenCaptureKit → Hardware-Codec → TCP"
+        case .italian: return "Pipeline: virtual display o mirror → capture diretta → codec hardware → TCP"
+        case .english: return "Pipeline: virtual display or mirror → direct capture → hardware codec → TCP"
+        case .german: return "Pipeline: Virtuelles Display oder Mirror → Direkte Aufnahme → Hardware-Codec → TCP"
         }
     }
 
@@ -324,9 +335,9 @@ enum TBDisplaySenderL10n {
 
     static func modeLine5(_ language: TBDisplaySenderLanguage) -> String {
         switch language {
-        case .italian: return "Usa Smooth per mouse e animazioni più fluidi; usa 5K per massima nitidezza."
-        case .english: return "Use Smooth for better mouse and animation motion; use 5K for maximum sharpness."
-        case .german: return "Verwenden Sie Smooth für flüssigere Mausbewegungen und Animationen; verwenden Sie 5K für maximale Schärfe."
+        case .italian: return "Scegli desktop esteso o mirror, poi bilancia fluidità e nitidezza col profilo stream."
+        case .english: return "Choose extended display or mirror, then balance motion and clarity with the stream profile."
+        case .german: return "Erweitertes Display oder Mirror wählen, dann Bewegungsfluss und Schärfe mit dem Stream-Profil abstimmen."
         }
     }
 
@@ -435,8 +446,8 @@ enum TBDisplaySenderL10n {
         }
     }
 
-    static func streamSummary(preset: TBDisplayCapturePreset, language: TBDisplaySenderLanguage) -> String {
-        "\(preset.description) (\(preset.title(language)), \(preset.codecName))"
+    static func streamSummary(preset: TBDisplayCapturePreset, source: TBDisplayCaptureSource, language: TBDisplaySenderLanguage) -> String {
+        "\(source.title(language)) · \(preset.description) (\(preset.title(language)), \(preset.codecName))"
     }
 
     static func missingScreenRecordingPermission(language: TBDisplaySenderLanguage) -> String {
