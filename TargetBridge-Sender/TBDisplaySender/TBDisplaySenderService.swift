@@ -108,16 +108,7 @@ enum TBDisplayCapturePreset: String, CaseIterable, Identifiable {
     }
 
     var queueDepth: Int {
-        switch self {
-        case .standard1440p:
-            return 4
-        case .smooth1440p60:
-            return 1
-        case .smooth1800p60, .crisp2160p48:
-            return 1
-        case .native5k:
-            return 1
-        }
+        return 2
     }
 
     var expectedFrameRate: Int {
@@ -173,16 +164,7 @@ enum TBDisplayCapturePreset: String, CaseIterable, Identifiable {
     }
 
     var maxPendingVideoPackets: Int {
-        switch self {
-        case .standard1440p:
-            return 8
-        case .smooth1440p60:
-            return 1
-        case .smooth1800p60, .crisp2160p48:
-            return 1
-        case .native5k:
-            return 1
-        }
+        return 3
     }
 
     var maxFrameDelayCount: Int {
@@ -204,14 +186,7 @@ enum TBDisplayCapturePreset: String, CaseIterable, Identifiable {
     }
 
     var maxInFlightEncodeFrames: Int {
-        switch self {
-        case .standard1440p:
-            return 3
-        case .smooth1440p60, .smooth1800p60:
-            return 2
-        case .crisp2160p48, .native5k:
-            return 1
-        }
+        return 5
     }
 
     var captureResolution: SCCaptureResolutionType {
