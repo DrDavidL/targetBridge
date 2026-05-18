@@ -4,7 +4,7 @@ import Combine
 @MainActor
 final class TBDisplaySenderStatusItemController: NSObject {
     private let service: TBDisplaySenderService
-    private var statusItem: NSStatusItem?
+    nonisolated(unsafe) private var statusItem: NSStatusItem?
     private var cancellables = Set<AnyCancellable>()
     private var hasActivated = false
 
@@ -13,6 +13,15 @@ final class TBDisplaySenderStatusItemController: NSObject {
         super.init()
         bind()
         observeApplicationLifecycle()
+    }
+
+    deinit {
+        let item = statusItem
+        DispatchQueue.main.async { [item] in
+            if let item {
+                NSStatusBar.system.removeStatusItem(item)
+            }
+        }
     }
 
     private func bind() {
