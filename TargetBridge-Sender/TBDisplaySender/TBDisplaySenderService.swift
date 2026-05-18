@@ -235,6 +235,24 @@ enum TBDisplayCapturePreset: String, CaseIterable, Identifiable {
     }
 }
 
+enum TBDisplayCaptureSource: String, CaseIterable, Identifiable {
+    case extendedVirtualDisplay
+    case mainDisplayMirror
+
+    var id: String { rawValue }
+
+    func title(_ language: TBDisplaySenderLanguage) -> String {
+        switch (self, language) {
+        case (.extendedVirtualDisplay, .italian): return "Desktop esteso"
+        case (.extendedVirtualDisplay, .english): return "Extended display"
+        case (.extendedVirtualDisplay, .german): return "Erweiterter Desktop"
+        case (.mainDisplayMirror, .italian): return "Duplica MacBook"
+        case (.mainDisplayMirror, .english): return "Mirror MacBook"
+        case (.mainDisplayMirror, .german): return "MacBook spiegeln"
+        }
+    }
+}
+
 private final class TBDirectDisplayStreamCapture {
     private let serviceRef: UnsafeMutableRawPointer
     private let queue: DispatchQueue
@@ -318,11 +336,18 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
     @Published var capturePreset: TBDisplayCapturePreset = .standard1440p {
         didSet {
             if !isStreaming {
-                streamResolutionText = TBDisplaySenderL10n.streamSummary(preset: capturePreset, language: language)
+                streamResolutionText = TBDisplaySenderL10n.streamSummary(preset: capturePreset, source: captureSource, language: language)
             }
         }
     }
-    @Published var streamResolutionText = TBDisplaySenderL10n.streamSummary(preset: .standard1440p, language: TBDisplaySenderLanguage.load())
+    @Published var captureSource: TBDisplayCaptureSource = .extendedVirtualDisplay {
+        didSet {
+            if !isStreaming {
+                streamResolutionText = TBDisplaySenderL10n.streamSummary(preset: capturePreset, source: captureSource, language: language)
+            }
+        }
+    }
+    @Published var streamResolutionText = TBDisplaySenderL10n.streamSummary(preset: .standard1440p, source: .extendedVirtualDisplay, language: TBDisplaySenderLanguage.load())
 
     private var connection: NWConnection?
     private let connectionQueue = DispatchQueue(label: "fd.tbmonitor.sender.connection", qos: .userInteractive)
@@ -397,7 +422,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
 
     private func refreshLocalizedText() {
         statusText = statusState.text(language)
-        streamResolutionText = TBDisplaySenderL10n.streamSummary(preset: capturePreset, language: language)
+        streamResolutionText = TBDisplaySenderL10n.streamSummary(preset: capturePreset, source: captureSource, language: language)
 
         if let profile = activeProfile {
             receiverPanelText = TBDisplaySenderL10n.receiverSummary(profile, language: language)
@@ -550,6 +575,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
             value: TBMonitorHelloReceiver(
                 senderName: name,
                 capturePreset: preset.title,
+                captureSource: captureSource.title(language),
                 captureWidth: preset.width,
                 captureHeight: preset.height,
                 codec: preset.codecName
@@ -638,7 +664,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
                 id: self.session.displayID,
                 language: self.language
             )
-            self.setStatus(.startingCapture(self.capturePreset.description))
+            self.setStatus(.startingCapture(self.capturePreset.description, self.captureSource))
             let started = await self.startCapture(for: profile)
             guard started else {
                 self.stop(resetStatusTo: nil)
@@ -653,10 +679,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
 
     private func startCapture(for profile: TBMonitorDisplayProfile) async -> Bool {
         do {
-            let display = try await waitForVirtualDisplay(
-                matching: session.displayID,
-                baselineDisplayIDs: baselineDisplayIDs
-            )
+            let display = try await waitForCaptureDisplay()
             let preset = capturePreset
             if startDirectDisplayStream(for: display, preset: preset) {
                 return true
@@ -679,7 +702,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
                 codecType: preset.codecType,
                 averageBitRate: preset.averageBitRate
             )
-            streamResolutionText = "\(preset.description) (\(preset.title), \(preset.codecName))"
+            streamResolutionText = TBDisplaySenderL10n.streamSummary(preset: preset, source: captureSource, language: language)
 
             let delegate = CaptureDelegate()
             delegate.onFrame = { [weak self] sampleBuffer in
@@ -706,13 +729,14 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
             isStreaming = true
             if largeCursor { startCursorUpdates(displayID: display.displayID) }
             streamingActivity = ProcessInfo.processInfo.beginActivity(
-                options: .userInitiatedAllowingIdleSystemSleep,
+                options: [.userInitiated, .idleSystemSleepDisabled],
                 reason: "TargetBridge streaming active"
             )
             startFPSTimer()
             return true
         } catch {
-            if error.localizedDescription.hasPrefix("nessun SCDisplay disponibile") {
+            if error.localizedDescription.hasPrefix("nessun SCDisplay") ||
+                error.localizedDescription.hasPrefix("virtual display") {
                 setStatus(.noShareableDisplay(error.localizedDescription))
             } else {
                 setStatus(.captureDesktopError(formattedCaptureErrorMessage(for: error)))
@@ -732,7 +756,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         guard vtEncoder != nil else { return false }
 
         displayStreamFrameSequence = 0
-        streamResolutionText = "\(preset.description) (\(preset.title), \(preset.codecName))"
+        streamResolutionText = TBDisplaySenderL10n.streamSummary(preset: preset, source: captureSource, language: language)
 
         let directCapture = TBDirectDisplayStreamCapture(service: self, queue: connectionQueue)
         guard directCapture.start(displayID: display.displayID, preset: preset, showCursor: !largeCursor) else {
@@ -743,11 +767,23 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         isStreaming = true
         if largeCursor { startCursorUpdates(displayID: display.displayID) }
         streamingActivity = ProcessInfo.processInfo.beginActivity(
-            options: .userInitiatedAllowingIdleSystemSleep,
+            options: [.userInitiated, .idleSystemSleepDisabled],
             reason: "TargetBridge streaming active"
         )
         startFPSTimer()
         return true
+    }
+
+    private func waitForCaptureDisplay() async throws -> SCDisplay {
+        switch captureSource {
+        case .extendedVirtualDisplay:
+            return try await waitForVirtualDisplay(
+                matching: session.displayID,
+                baselineDisplayIDs: baselineDisplayIDs
+            )
+        case .mainDisplayMirror:
+            return try await waitForMirrorDisplay(excluding: session.displayID)
+        }
     }
 
     private func waitForVirtualDisplay(
@@ -800,6 +836,39 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         }
         throw DisplayLookupError.notFound(
             details: "nessun SCDisplay virtuale disponibile (target=\(targetDisplayID), baseline=[\(baselineIDs)], disponibili=[\(availableIDs)], online=[\(onlineIDs)])"
+        )
+    }
+
+    private func waitForMirrorDisplay(excluding sessionDisplayID: CGDirectDisplayID) async throws -> SCDisplay {
+        enum DisplayLookupError: LocalizedError {
+            case notFound(details: String)
+
+            var errorDescription: String? {
+                switch self {
+                case .notFound(let details):
+                    return details
+                }
+            }
+        }
+
+        for _ in 0..<12 {
+            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+            let mainDisplayID = CGMainDisplayID()
+            if mainDisplayID != sessionDisplayID,
+               let display = content.displays.first(where: { $0.displayID == mainDisplayID }) {
+                return display
+            }
+
+            if let display = content.displays.first(where: { $0.displayID != sessionDisplayID }) {
+                return display
+            }
+            try await Task.sleep(nanoseconds: 250_000_000)
+        }
+
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+        let availableIDs = content.displays.map { String($0.displayID) }.sorted().joined(separator: ", ")
+        throw DisplayLookupError.notFound(
+            details: "nessun SCDisplay mirror disponibile (main=\(CGMainDisplayID()), virtual=\(sessionDisplayID), disponibili=[\(availableIDs)])"
         )
     }
 
@@ -954,7 +1023,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
             if let packet = TBMonitorProtocol.makeJSONPacket(type: .createSessionAck, value: ack) {
                 send(packet)
             }
-            setStatus(.captureActive(capturePreset.description, capturePreset.codecName))
+            setStatus(.captureActive(capturePreset.description, capturePreset.codecName, captureSource))
         }
 
         let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[CFString: Any]]
