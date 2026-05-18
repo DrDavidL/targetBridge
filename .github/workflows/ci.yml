@@ -8,8 +8,8 @@ on:
 
 jobs:
   build-sender:
-    name: Build Sender (macOS 14 - Apple Silicon)
-    runs-on: macos-14
+    name: Build Sender (macOS 15 - Apple Silicon)
+    runs-on: macos-15
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -31,9 +31,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-13
+          - os: macos-15-intel
             arch: x86_64
-          - os: macos-14
+          - os: macos-15
             arch: arm64
     runs-on: ${{ matrix.os }}
     steps:
