@@ -33,6 +33,12 @@ Apple dropped Target Display Mode in 2014 with the 5K iMac — and it never came
 
 Unzip and double-click. On first launch, grant Screen Recording permission to the sender.
 
+> **"App is damaged" warning?** macOS quarantines unsigned apps downloaded from the browser. Run this in Terminal, then try again:
+> ```bash
+> xattr -cr ~/Downloads/TargetBridge.app
+> xattr -cr ~/Downloads/TargetBridge\ Receiver.app
+> ```
+
 > **Pre-built receiver crashing?** Make sure you downloaded v1.2.0 or later — older builds required Homebrew or macOS 14. Re-download from the [latest release](https://github.com/swellweb/targetBridge/releases/latest).
 
 ## Requirements
