@@ -4,15 +4,15 @@
 
 [![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-pink?logo=github)](https://github.com/sponsors/swellweb)
 
-Use an Intel iMac as an external display for an Apple Silicon MacBook — free, no dongle, via Thunderbolt Bridge.
+Use an Intel iMac as an external display for an Apple Silicon Mac — free, no dongle, via Thunderbolt Bridge.
 
 If TargetBridge is useful to you, a ⭐ on GitHub helps others find it.
 
-Apple dropped Target Display Mode in 2014 with the 5K iMac — and it never came back. TargetBridge brings it back via software, streaming your MacBook screen to the iMac at up to 5K over a direct Thunderbolt cable.
+Apple dropped Target Display Mode in 2014 with the 5K iMac — and it never came back. TargetBridge brings it back via software, streaming your screen to the iMac at up to 5K over a direct Thunderbolt cable.
 
 ## Screenshots
 
-**Sender (MacBook Apple Silicon) — waiting for connection:**
+**Sender (Apple Silicon Mac) — waiting for connection:**
 ![TargetBridge Sender](screenshots/sender-idle.png)
 
 **Sender — active stream (5K, HEVC):**
@@ -28,8 +28,8 @@ Apple dropped Target Display Mode in 2014 with the 5K iMac — and it never came
 
 **[→ Download latest release (pre-built apps, no Xcode needed)](https://github.com/swellweb/targetBridge/releases/latest)**
 
-- `TargetBridge.app.zip` — Sender for MacBook Apple Silicon (**requires macOS 14 Sonoma or later**)
-- `TargetBridge-Receiver.app.zip` — Receiver for Intel iMac (**requires macOS 13 Ventura or later**)
+- `TargetBridge.app.zip` — Sender (Apple Silicon Mac, **requires macOS 14 Sonoma or later**)
+- `TargetBridge-Receiver.app.zip` — Receiver (Intel iMac, **requires macOS 13 Ventura or later**)
 
 Unzip and double-click. On first launch, grant Screen Recording permission to the sender.
 
@@ -37,9 +37,9 @@ Unzip and double-click. On first launch, grant Screen Recording permission to th
 
 ## Requirements
 
-- MacBook Apple Silicon (M1 or later), macOS 14 Sonoma or later — sender
-- Intel iMac 2017 or later, macOS 13 Ventura or later — receiver
-- Thunderbolt 3/4 cable
+- Sender: Apple Silicon Mac (M1 or later), macOS 14 Sonoma or later, TB3/4/5
+- Receiver: Intel iMac 2017 or later, macOS 13 Ventura or later, TB3/4/5
+- Thunderbolt 3/4/5 cable (backwards compatible)
 
 ## Stream profiles
 
@@ -49,7 +49,7 @@ Unzip and double-click. On first launch, grant Screen Recording permission to th
 - `Crisp · 3840 × 2160 @ 48` — clearer text with HEVC
 - `5K · 5120 × 2880 @ 48` — native iMac 5K stream with HEVC
 
-The sender can stream either an extended virtual display or a mirror of the MacBook display.
+The sender can stream either an extended virtual display or a mirror of the sender display.
 
 ## Extended Desktop
 
