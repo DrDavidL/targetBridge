@@ -267,7 +267,7 @@ private final class TBDirectDisplayStreamCapture {
     private let queue: DispatchQueue
     private var stream: CGDisplayStream?
 
-    init(service: TBDisplaySenderService, queue: DispatchQueue) {
+    init(service: TBDisplaySenderSession, queue: DispatchQueue) {
         self.serviceRef = Unmanaged.passUnretained(service).toOpaque()
         self.queue = queue
     }
@@ -295,7 +295,7 @@ private final class TBDirectDisplayStreamCapture {
                       let surfaceRef = UnsafeRawPointer(bitPattern: surfaceRefValue) else {
                     return
                 }
-                let service = Unmanaged<TBDisplaySenderService>.fromOpaque(serviceRef).takeUnretainedValue()
+                let service = Unmanaged<TBDisplaySenderSession>.fromOpaque(serviceRef).takeUnretainedValue()
                 let surface = Unmanaged<IOSurface>.fromOpaque(surfaceRef).takeRetainedValue()
                 MainActor.assumeIsolated {
                     service.encodeDisplaySurface(surface, displayTime: displayTime)
@@ -318,39 +318,55 @@ private final class TBDirectDisplayStreamCapture {
 }
 
 @MainActor
-final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Sendable {
-    static let shared = TBDisplaySenderService()
-    private override init() { super.init() }
+final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @unchecked Sendable {
+    private static let receiverIPDefaultsKey = "fd.tbdisplaysender.receiverIP"
+    private struct SavedExtendedDisplayArrangement {
+        let x: Int32
+        let y: Int32
+        let isRelativeToMainDisplay: Bool
+    }
+
+    private static let extendedArrangementDefaultsPrefix = "com.targetbridge.sender.extended-arrangement"
+    let id = UUID()
+
+    init(language: TBDisplaySenderLanguage, largeCursor: Bool) {
+        self.statusText = TBDisplaySenderStatusState.ready.text(language)
+        self.receiverPanelText = TBDisplaySenderL10n.waitingReceiverProfile(language)
+        self.virtualDisplayText = TBDisplaySenderL10n.virtualDisplayNotCreated(language)
+        self.language = language
+        self.largeCursor = largeCursor
+        self.streamResolutionText = TBDisplaySenderL10n.streamSummary(
+            preset: .standard1440p,
+            source: .desktopMirror,
+            language: language
+        )
+        super.init()
+    }
 
     @Published var isConnected = false
     @Published var isStreaming = false
-    @Published var statusText = TBDisplaySenderStatusState.ready.text(TBDisplaySenderLanguage.load())
+    @Published var statusText: String
+    @Published var localTBIP = ""
+    @Published var selectedReceiverID = ""
     @Published var isCableTesting = false
     @Published var cableTestResult: Double? = nil
     private var isCableTestConnection = false
-    @Published var myTBIP: String? = nil
-    @Published var receiverIP: String = UserDefaults.standard.string(forKey: "fd.tbdisplaysender.receiverIP") ?? "" {
+    @Published var receiverIP: String = UserDefaults.standard.string(forKey: receiverIPDefaultsKey) ?? "" {
         didSet {
-            UserDefaults.standard.set(receiverIP, forKey: "fd.tbdisplaysender.receiverIP")
+            UserDefaults.standard.set(receiverIP, forKey: Self.receiverIPDefaultsKey)
         }
     }
     @Published var senderFPS = 0
-    @Published var receiverPanelText = TBDisplaySenderL10n.waitingReceiverProfile(TBDisplaySenderLanguage.load())
-    @Published var virtualDisplayText = TBDisplaySenderL10n.virtualDisplayNotCreated(TBDisplaySenderLanguage.load())
+    @Published var receiverPanelText: String
+    @Published var virtualDisplayText: String
     @Published var captureDisplayText = "Capture display: n/a"
     @Published var displayStateText = "Display state: n/a"
-    @Published var language: TBDisplaySenderLanguage = .load() {
+    @Published var language: TBDisplaySenderLanguage {
         didSet {
-            language.persist()
             refreshLocalizedText()
         }
     }
-    @Published var showsMenuBarIcon = true
-    @Published var largeCursor: Bool = UserDefaults.standard.bool(forKey: "fd.tbdisplaysender.largeCursor") {
-        didSet {
-            UserDefaults.standard.set(largeCursor, forKey: "fd.tbdisplaysender.largeCursor")
-        }
-    }
+    @Published var largeCursor: Bool
     @Published var capturePreset: TBDisplayCapturePreset = .standard1440p {
         didSet {
             if !isStreaming {
@@ -365,7 +381,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
             }
         }
     }
-    @Published var streamResolutionText = TBDisplaySenderL10n.streamSummary(preset: .standard1440p, source: .desktopMirror, language: TBDisplaySenderLanguage.load())
+    @Published var streamResolutionText: String
 
     private var connection: NWConnection?
     private let connectionQueue = DispatchQueue(label: "fd.tbmonitor.sender.connection", qos: .userInteractive)
@@ -378,7 +394,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
     private var scStream: SCStream?
     private var directDisplayStream: TBDirectDisplayStreamCapture?
     private var vtEncoder: VTCompressionSession?
-    private var vtEncoderRef: Unmanaged<TBDisplaySenderService>?
+    private var vtEncoderRef: Unmanaged<TBDisplaySenderSession>?
 
     private var sentFrames = 0
     private var sentSnapshot = 0
@@ -459,10 +475,6 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         }
     }
 
-    func refreshTBIP() {
-        myTBIP = detectLocalTBIP()
-    }
-
     private func formattedCaptureErrorMessage(for error: Error) -> String {
         let nsError = error as NSError
         let details = "\(nsError.localizedDescription) [\(nsError.domain) \(nsError.code)]"
@@ -484,7 +496,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
     }
 
     func connect() {
-        guard connection == nil, !receiverIP.isEmpty else { return }
+        guard connection == nil, !receiverIP.isEmpty, !localTBIP.isEmpty else { return }
         recvBuffer.removeAll(keepingCapacity: false)
         activeProfile = nil
         setStatus(.connecting(receiverIP))
@@ -494,6 +506,9 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         let params = NWParameters(tls: nil, tcp: tcpOptions)
         params.allowLocalEndpointReuse = true
         params.serviceClass = .interactiveVideo
+        if let localPort = NWEndpoint.Port(rawValue: 0) {
+            params.requiredLocalEndpoint = .hostPort(host: NWEndpoint.Host(localTBIP), port: localPort)
+        }
         let conn = NWConnection(
             host: NWEndpoint.Host(receiverIP),
             port: NWEndpoint.Port(integerLiteral: TBMonitorProtocol.port),
@@ -643,11 +658,18 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         }
     }
 
-    func stop() {
-        stop(resetStatusTo: .stopped)
+    func stop(persistArrangement: Bool = true) {
+        stop(resetStatusTo: .stopped, persistArrangement: persistArrangement)
     }
 
-    private func stop(resetStatusTo status: TBDisplaySenderStatusState?) {
+    func persistExtendedDisplayArrangementSnapshot() {
+        persistExtendedDisplayArrangementIfNeeded()
+    }
+
+    private func stop(resetStatusTo status: TBDisplaySenderStatusState?, persistArrangement: Bool = true) {
+        if persistArrangement {
+            persistExtendedDisplayArrangementIfNeeded()
+        }
         sendTeardown(reason: "sender_stop")
         heartbeatTimer?.invalidate()
         heartbeatTimer = nil
@@ -705,6 +727,64 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         lastCursorPacket = nil
         captureDisplayText = "Capture display: n/a"
         displayStateText = "Display state: n/a"
+    }
+
+    private func extendedArrangementDefaultsKey(for profile: TBMonitorDisplayProfile) -> String {
+        let receiverIdentity = receiverIP.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? profile.receiverName
+            : receiverIP
+        let normalizedIdentity = receiverIdentity.replacingOccurrences(
+            of: #"[^A-Za-z0-9._-]+"#,
+            with: "-",
+            options: .regularExpression
+        )
+        return "\(Self.extendedArrangementDefaultsPrefix).\(normalizedIdentity).\(profile.panelWidth)x\(profile.panelHeight)"
+    }
+
+    private func loadSavedExtendedDisplayArrangement(for profile: TBMonitorDisplayProfile) -> SavedExtendedDisplayArrangement? {
+        let key = extendedArrangementDefaultsKey(for: profile)
+        guard let stored = UserDefaults.standard.dictionary(forKey: key) else {
+            return nil
+        }
+
+        if let dx = stored["dx"] as? Int,
+           let dy = stored["dy"] as? Int {
+            return SavedExtendedDisplayArrangement(
+                x: Int32(dx),
+                y: Int32(dy),
+                isRelativeToMainDisplay: true
+            )
+        }
+
+        guard let x = stored["x"] as? Int,
+              let y = stored["y"] as? Int
+        else {
+            return nil
+        }
+        return SavedExtendedDisplayArrangement(
+            x: Int32(x),
+            y: Int32(y),
+            isRelativeToMainDisplay: false
+        )
+    }
+
+    private func persistExtendedDisplayArrangementIfNeeded() {
+        guard captureSource == .extendedDesktop,
+              let profile = activeProfile,
+              session.displayID != kCGNullDirectDisplay,
+              CGDisplayIsInMirrorSet(session.displayID) == 0
+        else { return }
+
+        let bounds = CGDisplayBounds(session.displayID)
+        let mainBounds = CGDisplayBounds(CGMainDisplayID())
+        let key = extendedArrangementDefaultsKey(for: profile)
+        let payload: [String: Int] = [
+            "dx": Int((bounds.origin.x - mainBounds.origin.x).rounded()),
+            "dy": Int((bounds.origin.y - mainBounds.origin.y).rounded()),
+            "x": Int(bounds.origin.x.rounded()),
+            "y": Int(bounds.origin.y.rounded())
+        ]
+        UserDefaults.standard.set(payload, forKey: key)
     }
 
     private func sendHello() {
@@ -1043,6 +1123,8 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         Task { @MainActor [weak self] in
             guard let self else { return }
 
+            var hasAppliedArrangement = false
+
             for attempt in 1...12 {
                 try? await Task.sleep(nanoseconds: 500_000_000)
 
@@ -1051,12 +1133,19 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
                       self.activeProfile != nil
                 else { return }
 
-                if CGDisplayIsInMirrorSet(virtualDisplayID) == 0 {
+                // A newly recreated virtual display can already be outside a mirror set
+                // while still sitting at macOS's default placement on the right.
+                // Force at least one explicit extended-desktop configuration pass so
+                // we can reapply the saved arrangement for this receiver.
+                if CGDisplayIsInMirrorSet(virtualDisplayID) == 0 && hasAppliedArrangement {
                     self.displayStateText = self.describeDisplayState(for: virtualDisplayID)
                     return
                 }
 
                 let configured = self.configureExtendedDesktop(for: virtualDisplayID)
+                if configured {
+                    hasAppliedArrangement = true
+                }
                 self.displayStateText = self.describeDisplayState(for: virtualDisplayID)
                 NSLog(
                     "TargetBridge: extended desktop recovery attempt %d for %u configured=%d state=%@",
@@ -1066,7 +1155,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
                     self.displayStateText
                 )
 
-                if configured || CGDisplayIsInMirrorSet(virtualDisplayID) == 0 {
+                if configured || (CGDisplayIsInMirrorSet(virtualDisplayID) == 0 && hasAppliedArrangement) {
                     return
                 }
             }
@@ -1097,15 +1186,31 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
             }
 
             let mainOriginResult = CGConfigureDisplayOrigin(cfg, mainDisplayID, 0, 0)
-            let targetX = Int32(mainBounds.maxX.rounded())
-            let targetY = Int32(mainBounds.origin.y.rounded())
+            let savedArrangement = activeProfile.flatMap { loadSavedExtendedDisplayArrangement(for: $0) }
+            let defaultTargetX = Int32((mainBounds.maxX - mainBounds.origin.x).rounded())
+            let targetX: Int32
+            let targetY: Int32
+            if let savedArrangement {
+                if savedArrangement.isRelativeToMainDisplay {
+                    targetX = Int32(mainBounds.origin.x.rounded()) + savedArrangement.x
+                    targetY = Int32(mainBounds.origin.y.rounded()) + savedArrangement.y
+                } else {
+                    targetX = savedArrangement.x
+                    targetY = savedArrangement.y
+                }
+            } else {
+                targetX = defaultTargetX
+                targetY = 0
+            }
             let originResult = CGConfigureDisplayOrigin(cfg, virtualDisplayID, targetX, targetY)
             if mainOriginResult != .success || originResult != .success {
                 CGCancelDisplayConfiguration(cfg)
                 NSLog(
-                    "TargetBridge: failed to position displays for extended desktop (main=%d virtual=%u result=%d)",
+                    "TargetBridge: failed to position displays for extended desktop (main=%d virtual=%u targetX=%d targetY=%d result=%d)",
                     mainOriginResult.rawValue,
                     virtualDisplayID,
+                    targetX,
+                    targetY,
                     originResult.rawValue
                 )
                 RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
@@ -1161,7 +1266,7 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
 
         let callback: VTCompressionOutputCallback = { ref, _, status, _, sampleBuffer in
             guard let ref else { return }
-            let service = Unmanaged<TBDisplaySenderService>.fromOpaque(ref).takeUnretainedValue()
+            let service = Unmanaged<TBDisplaySenderSession>.fromOpaque(ref).takeUnretainedValue()
             DispatchQueue.main.async {
                 service.inFlightEncodeFrames = max(0, service.inFlightEncodeFrames - 1)
                 guard status == noErr, let sampleBuffer else { return }
@@ -1487,32 +1592,4 @@ final class TBDisplaySenderService: NSObject, ObservableObject, @unchecked Senda
         connection?.send(content: packet, completion: .contentProcessed({ _ in }))
     }
 
-    private func detectLocalTBIP() -> String? {
-        var ifaddr: UnsafeMutablePointer<ifaddrs>?
-        guard getifaddrs(&ifaddr) == 0 else { return nil }
-        defer { freeifaddrs(ifaddr) }
-
-        var pointer = ifaddr
-        while let iface = pointer {
-            defer { pointer = iface.pointee.ifa_next }
-            guard let sa = iface.pointee.ifa_addr,
-                  sa.pointee.sa_family == UInt8(AF_INET)
-            else { continue }
-            let name = String(cString: iface.pointee.ifa_name)
-            guard name.hasPrefix("bridge") else { continue }
-            var buffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-            guard getnameinfo(
-                sa,
-                socklen_t(sa.pointee.sa_len),
-                &buffer,
-                socklen_t(buffer.count),
-                nil,
-                0,
-                NI_NUMERICHOST
-            ) == 0 else { continue }
-            let ip = String(cString: buffer)
-            if ip.hasPrefix("169.254.") { return ip }
-        }
-        return nil
-    }
 }
