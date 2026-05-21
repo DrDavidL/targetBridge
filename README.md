@@ -111,5 +111,6 @@ If the receiver does not fill the iMac panel or the cursor/desktop feels scaled 
 
 - Italian: `docs/QuickStart-IT.md`
 - English: `docs/QuickStart-EN.md`
+- 中文: `docs/QuickStart-ZH.md`
 
 When building from source, the sender can also discover compatible receivers automatically in the UI and prefill their Thunderbolt Bridge IP.
