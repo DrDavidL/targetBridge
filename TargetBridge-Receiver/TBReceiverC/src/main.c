@@ -280,12 +280,14 @@ static void on_packet(uint8_t type, const uint8_t *payload, size_t len, void *ud
             int w = 0;
             int h = 0;
             int visible = 0;
+            int type = 0;
             (void)extract_json_int_field(payload, len, "\"x\"", &x);
             (void)extract_json_int_field(payload, len, "\"y\"", &y);
             (void)extract_json_int_field(payload, len, "\"width\"", &w);
             (void)extract_json_int_field(payload, len, "\"height\"", &h);
             (void)extract_json_bool_field(payload, len, "\"visible\"", &visible);
-            tb_disp_set_cursor(a->disp, x, y, w, h, visible);
+            (void)extract_json_int_field(payload, len, "\"type\"", &type);
+            tb_disp_set_cursor(a->disp, x, y, w, h, visible, type);
         }
         break;
     case TB_PKT_HEARTBEAT:
@@ -414,7 +416,7 @@ static void close_client(struct app *a) {
     a->close_requested = 0;
     a->have_video_frame = 0;
     tb_disp_set_connection_state(a->disp, 0);
-    tb_disp_set_cursor(a->disp, 0, 0, 1, 1, 0);
+    tb_disp_set_cursor(a->disp, 0, 0, 1, 1, 0, 0);
     snprintf(a->status_text, sizeof(a->status_text), "%s", "waiting for sender");
     snprintf(a->sender_text, sizeof(a->sender_text), "%s", "waiting");
     tb_parser_free(&a->parser);

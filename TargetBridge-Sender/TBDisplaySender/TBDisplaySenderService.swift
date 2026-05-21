@@ -313,6 +313,85 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
     }
 
     private static let extendedArrangementDefaultsPrefix = "com.targetbridge.sender.extended-arrangement"
+
+    private static func normalizedPng(for image: NSImage) -> Data? {
+        let targetSize = NSSize(width: 32, height: 32)
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(targetSize.width),
+            pixelsHigh: Int(targetSize.height),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else {
+            return nil
+        }
+
+        let context = NSGraphicsContext(bitmapImageRep: bitmap)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+
+        // Clear canvas
+        NSColor.clear.set()
+        NSRect(origin: .zero, size: targetSize).fill()
+
+        // Draw the image centered
+        let x = (targetSize.width - image.size.width) / 2
+        let y = (targetSize.height - image.size.height) / 2
+        image.draw(in: NSRect(x: x, y: y, width: image.size.width, height: image.size.height))
+
+        NSGraphicsContext.restoreGraphicsState()
+
+        return bitmap.representation(using: .png, properties: [:])
+    }
+
+    private static let standardCursorPngs: [Data: Int] = {
+        let standardCursors: [(Int, NSCursor)] = [
+            (0, NSCursor.arrow),
+            (1, NSCursor.iBeam),
+            (2, NSCursor.pointingHand),
+            (3, NSCursor.resizeLeft),
+            (3, NSCursor.resizeRight),
+            (3, NSCursor.resizeLeftRight),
+            (4, NSCursor.resizeUp),
+            (4, NSCursor.resizeDown),
+            (4, NSCursor.resizeUpDown),
+            (5, NSCursor.closedHand),
+            (5, NSCursor.openHand),
+            (6, NSCursor.crosshair)
+        ]
+        var dict = [Data: Int]()
+        for (type, cursor) in standardCursors {
+            if let png = normalizedPng(for: cursor.image) {
+                dict[png] = type
+            }
+        }
+
+        // Dynamically load private system window resize cursors to support macOS window borders perfectly
+        let privateCursors: [(Int, String)] = [
+            (3, "_windowResizeEastWestCursor"),
+            (4, "_windowResizeNorthSouthCursor"),
+            (7, "_windowResizeNorthWestSouthEastCursor"),
+            (8, "_windowResizeNorthEastSouthWestCursor"),
+            (3, "_horizontalResizeCursor"),
+            (4, "_verticalResizeCursor")
+        ]
+        for (type, selName) in privateCursors {
+            let sel = NSSelectorFromString(selName)
+            if NSCursor.responds(to: sel),
+               let cursorObj = NSCursor.perform(sel)?.takeUnretainedValue() as? NSCursor,
+               let png = normalizedPng(for: cursorObj.image) {
+                dict[png] = type
+            }
+        }
+
+        return dict
+    }()
+
     let id = UUID()
 
     init(language: TBDisplaySenderLanguage, largeCursor: Bool) {
@@ -1499,6 +1578,35 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
         sendCursorUpdateIfNeeded(force: true)
     }
 
+    private func getCurrentCursorType() -> Int {
+        guard let current = NSCursor.currentSystem else { return 0 }
+        if let currentPng = Self.normalizedPng(for: current.image),
+           let matchedType = Self.standardCursorPngs[currentPng] {
+            return matchedType
+        }
+
+        let size = current.image.size
+        let hotSpot = current.hotSpot
+        if size.width > 0 && size.height > 0 {
+            if hotSpot.x > 0 && hotSpot.x < 10 && hotSpot.y == 0 {
+                return 2 // Pointing Hand
+            }
+            if size.width < size.height && abs(hotSpot.x - size.width / 2) < 2 && abs(hotSpot.y - size.height / 2) < 2 {
+                return 1 // I-Beam
+            }
+            if abs(hotSpot.x - size.width / 2) < 2 && abs(hotSpot.y - size.height / 2) < 2 {
+                if size.width > size.height {
+                    return 3 // Resize Horizontal
+                } else if size.height > size.width {
+                    return 4 // Resize Vertical
+                } else {
+                    return 3 // Default fallback for square symmetric cursors: Resize Horizontal
+                }
+            }
+        }
+        return 0 // Arrow
+    }
+
     private func sendCursorUpdateIfNeeded(force: Bool = false) {
         guard isConnected, isStreaming, cursorDisplayID != kCGNullDirectDisplay else { return }
         guard let point = CGEvent(source: nil)?.location else { return }
@@ -1517,7 +1625,8 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
             y: scaledY,
             width: capturePreset.width,
             height: capturePreset.height,
-            visible: visible
+            visible: visible,
+            type: getCurrentCursorType()
         )
 
         if !force, let previous = lastCursorPacket {
@@ -1525,7 +1634,8 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
             if movement < 2,
                previous.visible == cursor.visible,
                previous.width == cursor.width,
-               previous.height == cursor.height {
+               previous.height == cursor.height,
+               previous.type == cursor.type {
                 return
             }
         }

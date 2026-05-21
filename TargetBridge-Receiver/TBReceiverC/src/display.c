@@ -36,6 +36,7 @@ struct tb_display {
     int           cursor_x, cursor_y;
     int           cursor_source_w, cursor_source_h;
     int           cursor_visible;
+    int           cursor_type;
     uint32_t      last_video_frame_time;
 
     char          last_ip[64];
@@ -296,6 +297,7 @@ struct tb_display *tb_disp_create(int fullscreen) {
     d->cursor_source_w = 1;
     d->cursor_source_h = 1;
     d->cursor_visible = 0;
+    d->cursor_type = 0;
     d->last_video_frame_time = 0;
 
     tb_disp_refresh_window_mode(d);
@@ -393,6 +395,21 @@ static SDL_Point tb_disp_cursor_point(int x, int y, int size, int px, int py) {
     return p;
 }
 
+static void draw_scaled_rect(SDL_Renderer *ren, int cx, int cy, int size, int rx1, int ry1, int rx2, int ry2) {
+    SDL_Rect r;
+    int x1 = cx + tb_disp_cursor_scale(size, rx1);
+    int y1 = cy + tb_disp_cursor_scale(size, ry1);
+    int x2 = cx + tb_disp_cursor_scale(size, rx2);
+    int y2 = cy + tb_disp_cursor_scale(size, ry2);
+    r.x = x1 < x2 ? x1 : x2;
+    r.y = y1 < y2 ? y1 : y2;
+    r.w = x2 > x1 ? (x2 - x1) : (x1 - x2);
+    r.h = y2 > y1 ? (y2 - y1) : (y1 - y2);
+    if (r.w == 0) r.w = 1;
+    if (r.h == 0) r.h = 1;
+    SDL_RenderFillRect(ren, &r);
+}
+
 static void tb_disp_draw_cursor(struct tb_display *d) {
     if (!d || !d->cursor_visible || d->cursor_source_w <= 0 || d->cursor_source_h <= 0) return;
 
@@ -409,44 +426,366 @@ static void tb_disp_draw_cursor(struct tb_display *d) {
     SDL_BlendMode old_blend = SDL_BLENDMODE_NONE;
     (void)SDL_GetRenderDrawBlendMode(d->ren, &old_blend);
 
-    SDL_Point shadow[] = {
-        tb_disp_cursor_point(x + 2, y + 3, size, 0, 0),
-        tb_disp_cursor_point(x + 2, y + 3, size, 0, 33),
-        tb_disp_cursor_point(x + 2, y + 3, size, 7, 25),
-        tb_disp_cursor_point(x + 2, y + 3, size, 13, 38),
-        tb_disp_cursor_point(x + 2, y + 3, size, 20, 35),
-        tb_disp_cursor_point(x + 2, y + 3, size, 14, 22),
-        tb_disp_cursor_point(x + 2, y + 3, size, 24, 22)
-    };
     SDL_SetRenderDrawBlendMode(d->ren, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 70);
-    tb_disp_fill_poly(d->ren, shadow, (int)(sizeof(shadow) / sizeof(shadow[0])));
 
-    SDL_Point outline[] = {
-        tb_disp_cursor_point(x, y, size, 0, 0),
-        tb_disp_cursor_point(x, y, size, 0, 33),
-        tb_disp_cursor_point(x, y, size, 7, 25),
-        tb_disp_cursor_point(x, y, size, 13, 38),
-        tb_disp_cursor_point(x, y, size, 20, 35),
-        tb_disp_cursor_point(x, y, size, 14, 22),
-        tb_disp_cursor_point(x, y, size, 24, 22)
-    };
-    SDL_SetRenderDrawColor(d->ren, 255, 255, 255, 255);
-    tb_disp_fill_poly(d->ren, outline, (int)(sizeof(outline) / sizeof(outline[0])));
-    tb_disp_draw_poly_outline(d->ren, outline, (int)(sizeof(outline) / sizeof(outline[0])));
+    if (d->cursor_type == 1) {
+        /* I-Beam (Text Cursor) */
+        /* Draw Shadow */
+        SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 70);
+        int sx_off = 1, sy_off = 2;
+        draw_scaled_rect(d->ren, x + sx_off, y + sy_off, size, -8, -14, 8, -10);
+        draw_scaled_rect(d->ren, x + sx_off, y + sy_off, size, -8, 10, 8, 14);
+        draw_scaled_rect(d->ren, x + sx_off, y + sy_off, size, -2, -12, 2, 12);
+        
+        /* Draw Outline (White) */
+        SDL_SetRenderDrawColor(d->ren, 255, 255, 255, 255);
+        draw_scaled_rect(d->ren, x, y, size, -8, -14, 8, -10);
+        draw_scaled_rect(d->ren, x, y, size, -8, 10, 8, 14);
+        draw_scaled_rect(d->ren, x, y, size, -2, -12, 2, 12);
+        
+        /* Draw Body (Black) */
+        SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 255);
+        draw_scaled_rect(d->ren, x, y, size, -7, -13, 7, -11);
+        draw_scaled_rect(d->ren, x, y, size, -7, 11, 7, 13);
+        draw_scaled_rect(d->ren, x, y, size, -1, -11, 1, 11);
+    }
+    else if (d->cursor_type == 2) {
+        /* Pointing Hand */
+        const int cx = x - tb_disp_cursor_scale(size, 10);
+        const int cy = y;
+        SDL_Point shadow[] = {
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 10, 0),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 13, 2),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 13, 11),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 17, 11),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 17, 15),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 16, 17),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 16, 20),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 14, 22),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 14, 24),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 11, 27),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 5, 27),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 1, 20),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 0, 16),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 3, 13),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 7, 11),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 7, 2)
+        };
+        SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 70);
+        tb_disp_fill_poly(d->ren, shadow, (int)(sizeof(shadow) / sizeof(shadow[0])));
 
-    SDL_Point body[] = {
-        tb_disp_cursor_point(x, y, size, 3, 5),
-        tb_disp_cursor_point(x, y, size, 3, 27),
-        tb_disp_cursor_point(x, y, size, 8, 21),
-        tb_disp_cursor_point(x, y, size, 14, 34),
-        tb_disp_cursor_point(x, y, size, 16, 33),
-        tb_disp_cursor_point(x, y, size, 11, 20),
-        tb_disp_cursor_point(x, y, size, 19, 20)
-    };
-    SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 255);
-    tb_disp_fill_poly(d->ren, body, (int)(sizeof(body) / sizeof(body[0])));
-    tb_disp_draw_poly_outline(d->ren, body, (int)(sizeof(body) / sizeof(body[0])));
+        SDL_Point outline[] = {
+            tb_disp_cursor_point(cx, cy, size, 10, 0),
+            tb_disp_cursor_point(cx, cy, size, 13, 2),
+            tb_disp_cursor_point(cx, cy, size, 13, 11),
+            tb_disp_cursor_point(cx, cy, size, 17, 11),
+            tb_disp_cursor_point(cx, cy, size, 17, 15),
+            tb_disp_cursor_point(cx, cy, size, 16, 17),
+            tb_disp_cursor_point(cx, cy, size, 16, 20),
+            tb_disp_cursor_point(cx, cy, size, 14, 22),
+            tb_disp_cursor_point(cx, cy, size, 14, 24),
+            tb_disp_cursor_point(cx, cy, size, 11, 27),
+            tb_disp_cursor_point(cx, cy, size, 5, 27),
+            tb_disp_cursor_point(cx, cy, size, 1, 20),
+            tb_disp_cursor_point(cx, cy, size, 0, 16),
+            tb_disp_cursor_point(cx, cy, size, 3, 13),
+            tb_disp_cursor_point(cx, cy, size, 7, 11),
+            tb_disp_cursor_point(cx, cy, size, 7, 2)
+        };
+        SDL_SetRenderDrawColor(d->ren, 255, 255, 255, 255);
+        tb_disp_fill_poly(d->ren, outline, (int)(sizeof(outline) / sizeof(outline[0])));
+        tb_disp_draw_poly_outline(d->ren, outline, (int)(sizeof(outline) / sizeof(outline[0])));
+
+        SDL_Point body[] = {
+            tb_disp_cursor_point(cx, cy, size, 10, 2),
+            tb_disp_cursor_point(cx, cy, size, 12, 3),
+            tb_disp_cursor_point(cx, cy, size, 12, 11),
+            tb_disp_cursor_point(cx, cy, size, 15, 12),
+            tb_disp_cursor_point(cx, cy, size, 15, 14),
+            tb_disp_cursor_point(cx, cy, size, 14, 17),
+            tb_disp_cursor_point(cx, cy, size, 14, 19),
+            tb_disp_cursor_point(cx, cy, size, 12, 21),
+            tb_disp_cursor_point(cx, cy, size, 12, 23),
+            tb_disp_cursor_point(cx, cy, size, 10, 25),
+            tb_disp_cursor_point(cx, cy, size, 6, 25),
+            tb_disp_cursor_point(cx, cy, size, 3, 19),
+            tb_disp_cursor_point(cx, cy, size, 2, 16),
+            tb_disp_cursor_point(cx, cy, size, 4, 14),
+            tb_disp_cursor_point(cx, cy, size, 8, 12),
+            tb_disp_cursor_point(cx, cy, size, 8, 3)
+        };
+        SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 255);
+        tb_disp_fill_poly(d->ren, body, (int)(sizeof(body) / sizeof(body[0])));
+        tb_disp_draw_poly_outline(d->ren, body, (int)(sizeof(body) / sizeof(body[0])));
+    }
+    else if (d->cursor_type == 3) {
+        /* Resize Horizontal */
+        const int cx = x - tb_disp_cursor_scale(size, 16);
+        const int cy = y - tb_disp_cursor_scale(size, 16);
+        SDL_Point shadow[] = {
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 2, 16),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 8, 10),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 8, 13),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 24, 13),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 24, 10),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 30, 16),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 24, 22),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 24, 19),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 8, 19),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 8, 22)
+        };
+        SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 70);
+        tb_disp_fill_poly(d->ren, shadow, (int)(sizeof(shadow) / sizeof(shadow[0])));
+
+        SDL_Point outline[] = {
+            tb_disp_cursor_point(cx, cy, size, 2, 16),
+            tb_disp_cursor_point(cx, cy, size, 8, 10),
+            tb_disp_cursor_point(cx, cy, size, 8, 13),
+            tb_disp_cursor_point(cx, cy, size, 24, 13),
+            tb_disp_cursor_point(cx, cy, size, 24, 10),
+            tb_disp_cursor_point(cx, cy, size, 30, 16),
+            tb_disp_cursor_point(cx, cy, size, 24, 22),
+            tb_disp_cursor_point(cx, cy, size, 24, 19),
+            tb_disp_cursor_point(cx, cy, size, 8, 19),
+            tb_disp_cursor_point(cx, cy, size, 8, 22)
+        };
+        SDL_SetRenderDrawColor(d->ren, 255, 255, 255, 255);
+        tb_disp_fill_poly(d->ren, outline, (int)(sizeof(outline) / sizeof(outline[0])));
+        tb_disp_draw_poly_outline(d->ren, outline, (int)(sizeof(outline) / sizeof(outline[0])));
+
+        SDL_Point body[] = {
+            tb_disp_cursor_point(cx, cy, size, 5, 16),
+            tb_disp_cursor_point(cx, cy, size, 8, 12),
+            tb_disp_cursor_point(cx, cy, size, 8, 15),
+            tb_disp_cursor_point(cx, cy, size, 24, 15),
+            tb_disp_cursor_point(cx, cy, size, 24, 12),
+            tb_disp_cursor_point(cx, cy, size, 27, 16),
+            tb_disp_cursor_point(cx, cy, size, 24, 20),
+            tb_disp_cursor_point(cx, cy, size, 24, 17),
+            tb_disp_cursor_point(cx, cy, size, 8, 17),
+            tb_disp_cursor_point(cx, cy, size, 8, 20)
+        };
+        SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 255);
+        tb_disp_fill_poly(d->ren, body, (int)(sizeof(body) / sizeof(body[0])));
+        tb_disp_draw_poly_outline(d->ren, body, (int)(sizeof(body) / sizeof(body[0])));
+    }
+    else if (d->cursor_type == 4) {
+        /* Resize Vertical */
+        const int cx = x - tb_disp_cursor_scale(size, 16);
+        const int cy = y - tb_disp_cursor_scale(size, 16);
+        SDL_Point shadow[] = {
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 16, 2),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 22, 8),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 19, 8),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 19, 24),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 22, 24),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 16, 30),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 10, 24),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 13, 24),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 13, 8),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 10, 8)
+        };
+        SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 70);
+        tb_disp_fill_poly(d->ren, shadow, (int)(sizeof(shadow) / sizeof(shadow[0])));
+
+        SDL_Point outline[] = {
+            tb_disp_cursor_point(cx, cy, size, 16, 2),
+            tb_disp_cursor_point(cx, cy, size, 22, 8),
+            tb_disp_cursor_point(cx, cy, size, 19, 8),
+            tb_disp_cursor_point(cx, cy, size, 19, 24),
+            tb_disp_cursor_point(cx, cy, size, 22, 24),
+            tb_disp_cursor_point(cx, cy, size, 16, 30),
+            tb_disp_cursor_point(cx, cy, size, 10, 24),
+            tb_disp_cursor_point(cx, cy, size, 13, 24),
+            tb_disp_cursor_point(cx, cy, size, 13, 8),
+            tb_disp_cursor_point(cx, cy, size, 10, 8)
+        };
+        SDL_SetRenderDrawColor(d->ren, 255, 255, 255, 255);
+        tb_disp_fill_poly(d->ren, outline, (int)(sizeof(outline) / sizeof(outline[0])));
+        tb_disp_draw_poly_outline(d->ren, outline, (int)(sizeof(outline) / sizeof(outline[0])));
+
+        SDL_Point body[] = {
+            tb_disp_cursor_point(cx, cy, size, 16, 5),
+            tb_disp_cursor_point(cx, cy, size, 20, 8),
+            tb_disp_cursor_point(cx, cy, size, 17, 8),
+            tb_disp_cursor_point(cx, cy, size, 17, 24),
+            tb_disp_cursor_point(cx, cy, size, 20, 24),
+            tb_disp_cursor_point(cx, cy, size, 16, 27),
+            tb_disp_cursor_point(cx, cy, size, 12, 24),
+            tb_disp_cursor_point(cx, cy, size, 15, 24),
+            tb_disp_cursor_point(cx, cy, size, 15, 8),
+            tb_disp_cursor_point(cx, cy, size, 12, 8)
+        };
+        SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 255);
+        tb_disp_fill_poly(d->ren, body, (int)(sizeof(body) / sizeof(body[0])));
+        tb_disp_draw_poly_outline(d->ren, body, (int)(sizeof(body) / sizeof(body[0])));
+    }
+    else if (d->cursor_type == 6) {
+        /* Crosshair */
+        /* Draw Shadow */
+        SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 70);
+        int sx_off = 1, sy_off = 2;
+        draw_scaled_rect(d->ren, x + sx_off, y + sy_off, size, -15, -2, -2, 2);
+        draw_scaled_rect(d->ren, x + sx_off, y + sy_off, size, 2, -2, 15, 2);
+        draw_scaled_rect(d->ren, x + sx_off, y + sy_off, size, -2, -15, 2, -2);
+        draw_scaled_rect(d->ren, x + sx_off, y + sy_off, size, -2, 2, 2, 15);
+        
+        /* Draw Outline (White) */
+        SDL_SetRenderDrawColor(d->ren, 255, 255, 255, 255);
+        draw_scaled_rect(d->ren, x, y, size, -15, -2, -2, 2);
+        draw_scaled_rect(d->ren, x, y, size, 2, -2, 15, 2);
+        draw_scaled_rect(d->ren, x, y, size, -2, -15, 2, -2);
+        draw_scaled_rect(d->ren, x, y, size, -2, 2, 2, 15);
+        
+        /* Draw Body (Black) */
+        SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 255);
+        draw_scaled_rect(d->ren, x, y, size, -14, -1, -3, 1);
+        draw_scaled_rect(d->ren, x, y, size, 3, -1, 14, 1);
+        draw_scaled_rect(d->ren, x, y, size, -1, -14, 1, -3);
+        draw_scaled_rect(d->ren, x, y, size, -1, 3, 1, 14);
+    }
+    else if (d->cursor_type == 7) {
+        /* Northwest-Southeast diagonal resize cursor (NWSE) */
+        const int cx = x - tb_disp_cursor_scale(size, 16);
+        const int cy = y - tb_disp_cursor_scale(size, 16);
+        SDL_Point shadow[] = {
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 4, 4),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 12, 4),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 10, 7),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 22, 19),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 28, 20),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 28, 28),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 20, 28),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 22, 25),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 10, 13),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 4, 12)
+        };
+        SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 70);
+        tb_disp_fill_poly(d->ren, shadow, (int)(sizeof(shadow) / sizeof(shadow[0])));
+
+        SDL_Point outline[] = {
+            tb_disp_cursor_point(cx, cy, size, 4, 4),
+            tb_disp_cursor_point(cx, cy, size, 12, 4),
+            tb_disp_cursor_point(cx, cy, size, 10, 7),
+            tb_disp_cursor_point(cx, cy, size, 22, 19),
+            tb_disp_cursor_point(cx, cy, size, 28, 20),
+            tb_disp_cursor_point(cx, cy, size, 28, 28),
+            tb_disp_cursor_point(cx, cy, size, 20, 28),
+            tb_disp_cursor_point(cx, cy, size, 22, 25),
+            tb_disp_cursor_point(cx, cy, size, 10, 13),
+            tb_disp_cursor_point(cx, cy, size, 4, 12)
+        };
+        SDL_SetRenderDrawColor(d->ren, 255, 255, 255, 255);
+        tb_disp_fill_poly(d->ren, outline, (int)(sizeof(outline) / sizeof(outline[0])));
+        tb_disp_draw_poly_outline(d->ren, outline, (int)(sizeof(outline) / sizeof(outline[0])));
+
+        SDL_Point body[] = {
+            tb_disp_cursor_point(cx, cy, size, 7, 7),
+            tb_disp_cursor_point(cx, cy, size, 12, 7),
+            tb_disp_cursor_point(cx, cy, size, 10, 9),
+            tb_disp_cursor_point(cx, cy, size, 21, 20),
+            tb_disp_cursor_point(cx, cy, size, 25, 20),
+            tb_disp_cursor_point(cx, cy, size, 25, 25),
+            tb_disp_cursor_point(cx, cy, size, 20, 25),
+            tb_disp_cursor_point(cx, cy, size, 22, 23),
+            tb_disp_cursor_point(cx, cy, size, 11, 12),
+            tb_disp_cursor_point(cx, cy, size, 7, 12)
+        };
+        SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 255);
+        tb_disp_fill_poly(d->ren, body, (int)(sizeof(body) / sizeof(body[0])));
+        tb_disp_draw_poly_outline(d->ren, body, (int)(sizeof(body) / sizeof(body[0])));
+    }
+    else if (d->cursor_type == 8) {
+        /* Northeast-Southwest diagonal resize cursor (NESW) */
+        const int cx = x - tb_disp_cursor_scale(size, 16);
+        const int cy = y - tb_disp_cursor_scale(size, 16);
+        SDL_Point shadow[] = {
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 28, 4),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 20, 4),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 22, 7),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 10, 19),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 4, 20),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 4, 28),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 12, 28),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 10, 25),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 22, 13),
+            tb_disp_cursor_point(cx + 2, cy + 3, size, 28, 12)
+        };
+        SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 70);
+        tb_disp_fill_poly(d->ren, shadow, (int)(sizeof(shadow) / sizeof(shadow[0])));
+
+        SDL_Point outline[] = {
+            tb_disp_cursor_point(cx, cy, size, 28, 4),
+            tb_disp_cursor_point(cx, cy, size, 20, 4),
+            tb_disp_cursor_point(cx, cy, size, 22, 7),
+            tb_disp_cursor_point(cx, cy, size, 10, 19),
+            tb_disp_cursor_point(cx, cy, size, 4, 20),
+            tb_disp_cursor_point(cx, cy, size, 4, 28),
+            tb_disp_cursor_point(cx, cy, size, 12, 28),
+            tb_disp_cursor_point(cx, cy, size, 10, 25),
+            tb_disp_cursor_point(cx, cy, size, 22, 13),
+            tb_disp_cursor_point(cx, cy, size, 28, 12)
+        };
+        SDL_SetRenderDrawColor(d->ren, 255, 255, 255, 255);
+        tb_disp_fill_poly(d->ren, outline, (int)(sizeof(outline) / sizeof(outline[0])));
+        tb_disp_draw_poly_outline(d->ren, outline, (int)(sizeof(outline) / sizeof(outline[0])));
+
+        SDL_Point body[] = {
+            tb_disp_cursor_point(cx, cy, size, 25, 7),
+            tb_disp_cursor_point(cx, cy, size, 20, 7),
+            tb_disp_cursor_point(cx, cy, size, 22, 9),
+            tb_disp_cursor_point(cx, cy, size, 11, 20),
+            tb_disp_cursor_point(cx, cy, size, 7, 20),
+            tb_disp_cursor_point(cx, cy, size, 7, 25),
+            tb_disp_cursor_point(cx, cy, size, 12, 25),
+            tb_disp_cursor_point(cx, cy, size, 10, 23),
+            tb_disp_cursor_point(cx, cy, size, 21, 12),
+            tb_disp_cursor_point(cx, cy, size, 25, 12)
+        };
+        SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 255);
+        tb_disp_fill_poly(d->ren, body, (int)(sizeof(body) / sizeof(body[0])));
+        tb_disp_draw_poly_outline(d->ren, body, (int)(sizeof(body) / sizeof(body[0])));
+    }
+    else {
+        /* Default: Arrow (Type 0, 5, or fallback) */
+        SDL_Point shadow[] = {
+            tb_disp_cursor_point(x + 2, y + 3, size, 0, 0),
+            tb_disp_cursor_point(x + 2, y + 3, size, 0, 33),
+            tb_disp_cursor_point(x + 2, y + 3, size, 7, 25),
+            tb_disp_cursor_point(x + 2, y + 3, size, 13, 38),
+            tb_disp_cursor_point(x + 2, y + 3, size, 20, 35),
+            tb_disp_cursor_point(x + 2, y + 3, size, 14, 22),
+            tb_disp_cursor_point(x + 2, y + 3, size, 24, 22)
+        };
+        SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 70);
+        tb_disp_fill_poly(d->ren, shadow, (int)(sizeof(shadow) / sizeof(shadow[0])));
+
+        SDL_Point outline[] = {
+            tb_disp_cursor_point(x, y, size, 0, 0),
+            tb_disp_cursor_point(x, y, size, 0, 33),
+            tb_disp_cursor_point(x, y, size, 7, 25),
+            tb_disp_cursor_point(x, y, size, 13, 38),
+            tb_disp_cursor_point(x, y, size, 20, 35),
+            tb_disp_cursor_point(x, y, size, 14, 22),
+            tb_disp_cursor_point(x, y, size, 24, 22)
+        };
+        SDL_SetRenderDrawColor(d->ren, 255, 255, 255, 255);
+        tb_disp_fill_poly(d->ren, outline, (int)(sizeof(outline) / sizeof(outline[0])));
+        tb_disp_draw_poly_outline(d->ren, outline, (int)(sizeof(outline) / sizeof(outline[0])));
+
+        SDL_Point body[] = {
+            tb_disp_cursor_point(x, y, size, 3, 5),
+            tb_disp_cursor_point(x, y, size, 3, 27),
+            tb_disp_cursor_point(x, y, size, 8, 21),
+            tb_disp_cursor_point(x, y, size, 14, 34),
+            tb_disp_cursor_point(x, y, size, 16, 33),
+            tb_disp_cursor_point(x, y, size, 11, 20),
+            tb_disp_cursor_point(x, y, size, 19, 20)
+        };
+        SDL_SetRenderDrawColor(d->ren, 0, 0, 0, 255);
+        tb_disp_fill_poly(d->ren, body, (int)(sizeof(body) / sizeof(body[0])));
+        tb_disp_draw_poly_outline(d->ren, body, (int)(sizeof(body) / sizeof(body[0])));
+    }
 
     SDL_SetRenderDrawBlendMode(d->ren, old_blend);
 }
@@ -479,13 +818,15 @@ void tb_disp_render_nv12(struct tb_display *d,
 void tb_disp_set_cursor(struct tb_display *d,
                         int x, int y,
                         int source_w, int source_h,
-                        int visible) {
+                        int visible,
+                        int type) {
     if (!d) return;
     d->cursor_x = x;
     d->cursor_y = y;
     d->cursor_source_w = source_w > 0 ? source_w : 1;
     d->cursor_source_h = source_h > 0 ? source_h : 1;
     d->cursor_visible = visible;
+    d->cursor_type = type;
 
     uint32_t now = SDL_GetTicks();
     if (now - d->last_video_frame_time > 40) {
