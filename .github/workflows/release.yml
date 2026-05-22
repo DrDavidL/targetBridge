@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   build-sender:
@@ -28,18 +30,30 @@ jobs:
       - name: Zip App Bundle
         run: |
           cd build
-          zip -r TargetBridge.app.zip TargetBridge.app
+          zip -r TargetBridge-arm64.app.zip TargetBridge.app
+
+      - name: Generate build provenance attestation
+        uses: actions/attest@v4
+        with:
+          subject-path: build/TargetBridge-arm64.app.zip
 
       - name: Upload Sender Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: TargetBridge.app.zip
-          path: build/TargetBridge.app.zip
+          name: TargetBridge-arm64.app.zip
+          path: build/TargetBridge-arm64.app.zip
           retention-days: 1
 
   build-receiver:
-    name: Build Receiver (Intel x86_64)
-    runs-on: macos-15-intel
+    name: Build Receiver (macOS ${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-15-intel
+            arch: x86_64
+          - os: macos-15
+            arch: arm64
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
@@ -56,13 +70,18 @@ jobs:
       - name: Zip App Bundle
         run: |
           cd build
-          zip -r TargetBridge-Receiver.app.zip "TargetBridge Receiver.app"
+          zip -r TargetBridge-Receiver-${{ matrix.arch }}.app.zip "TargetBridge Receiver.app"
+
+      - name: Generate build provenance attestation
+        uses: actions/attest@v4
+        with:
+          subject-path: build/TargetBridge-Receiver-${{ matrix.arch }}.app.zip
 
       - name: Upload Receiver Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: TargetBridge-Receiver.app.zip
-          path: build/TargetBridge-Receiver.app.zip
+          name: TargetBridge-Receiver-${{ matrix.arch }}.app.zip
+          path: build/TargetBridge-Receiver-${{ matrix.arch }}.app.zip
           retention-days: 1
 
   publish-release:
@@ -76,13 +95,19 @@ jobs:
       - name: Download Sender Artifact
         uses: actions/download-artifact@v8
         with:
-          name: TargetBridge.app.zip
+          name: TargetBridge-arm64.app.zip
           path: ./artifacts
 
-      - name: Download Receiver Artifact
+      - name: Download Receiver Artifact (x86_64)
         uses: actions/download-artifact@v8
         with:
-          name: TargetBridge-Receiver.app.zip
+          name: TargetBridge-Receiver-x86_64.app.zip
+          path: ./artifacts
+
+      - name: Download Receiver Artifact (arm64)
+        uses: actions/download-artifact@v8
+        with:
+          name: TargetBridge-Receiver-arm64.app.zip
           path: ./artifacts
 
       - name: Create Draft Release
@@ -90,8 +115,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${{ github.ref_name }}" \
-            ./artifacts/TargetBridge.app.zip \
-            ./artifacts/TargetBridge-Receiver.app.zip \
+            ./artifacts/TargetBridge-arm64.app.zip \
+            ./artifacts/TargetBridge-Receiver-x86_64.app.zip \
+            ./artifacts/TargetBridge-Receiver-arm64.app.zip \
             --title "TargetBridge ${{ github.ref_name }}" \
             --draft \
             --generate-notes
