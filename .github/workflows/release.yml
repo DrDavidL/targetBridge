@@ -30,18 +30,18 @@ jobs:
       - name: Zip App Bundle
         run: |
           cd build
-          zip -r TargetBridge.app.zip TargetBridge.app
+          zip -r TargetBridge-arm64.app.zip TargetBridge.app
 
       - name: Generate build provenance attestation
         uses: actions/attest@v4
         with:
-          subject-path: build/TargetBridge.app.zip
+          subject-path: build/TargetBridge-arm64.app.zip
 
       - name: Upload Sender Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: TargetBridge.app.zip
-          path: build/TargetBridge.app.zip
+          name: TargetBridge-arm64.app.zip
+          path: build/TargetBridge-arm64.app.zip
           retention-days: 1
 
   build-receiver:
@@ -95,7 +95,7 @@ jobs:
       - name: Download Sender Artifact
         uses: actions/download-artifact@v8
         with:
-          name: TargetBridge.app.zip
+          name: TargetBridge-arm64.app.zip
           path: ./artifacts
 
       - name: Download Receiver Artifact (x86_64)
@@ -115,7 +115,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${{ github.ref_name }}" \
-            ./artifacts/TargetBridge.app.zip \
+            ./artifacts/TargetBridge-arm64.app.zip \
             ./artifacts/TargetBridge-Receiver-x86_64.app.zip \
             ./artifacts/TargetBridge-Receiver-arm64.app.zip \
             --title "TargetBridge ${{ github.ref_name }}" \

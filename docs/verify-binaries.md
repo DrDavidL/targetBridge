@@ -39,7 +39,7 @@ Run the `gh attestation verify` command on the downloaded ZIP file, specifying
 the official repository owner and name:
 
 ```bash
-gh attestation verify "/path/to/TargetBridge.app.zip" --owner "swellweb" --repo "targetBridge"
+gh attestation verify "/path/to/TargetBridge-arm64.app.zip" --owner "swellweb" --repo "targetBridge"
 ```
 
 ### Expected Successful Output
@@ -48,7 +48,7 @@ If the binary is authentic and was built by the official TargetBridge
 pipeline, the command will output a confirmation similar to the following:
 
 ```text
-Loaded 1 attestation for TargetBridge.app.zip
+Loaded 1 attestation for TargetBridge-arm64.app.zip
 ✓ Verified 1 attestation
 ✓ Deposited in public transparency log
 ✓ Signed by GitHub Actions
