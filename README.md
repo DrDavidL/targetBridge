@@ -2,27 +2,65 @@
 
 # TargetBridge
 
+Apple dropped Target Display Mode in late 2014 with the 5K iMac — and it never came back.
+
+TargetBridge brings it back via software, streaming your screen at up to 5K over a direct Thunderbolt connection, e.g. to an iMac.
+
+It's free and open source software, no subscription and no dongle required.
+
+If it is useful to you, spread the news and give us a ⭐ on GitHub.
+
+Sponsoring the TargetBridge project is also very welcome:
+
 [![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-pink?logo=github)](https://github.com/sponsors/swellweb)
 
-Use an Intel iMac as an external display for an Apple Silicon Mac — free, no dongle, via Thunderbolt Bridge.
+## Features
 
-If TargetBridge is useful to you, a ⭐ on GitHub helps others find it.
-
-Apple dropped Target Display Mode in 2014 with the 5K iMac — and it never came back. TargetBridge brings it back via software, streaming your screen to the iMac at up to 5K over a direct Thunderbolt cable.
-
-## Release status
-
-The latest packaged public release is still **v1.3.0**.
-
-The current repository also contains the upcoming direct multi-iMac work planned for the next release, including:
-
-- multiple simultaneous direct receiver sessions from one sender
+- a sender can stream either an extended virtual display or a mirror of the sender display
+- one sender can stream to multiple receiver machines (using multiple TB cables)
+- multiple available stream profiles from 2560x1440 to 5120x2880 at various refresh rates
+- uses low latency, high throughput thunderbolt connections
+- uses Apple Silicon Media Engines for fast H.264/HEVC encoding
 - automatic receiver discovery via Bonjour
-- remembered extended-display arrangement per receiver
-- repo-local build outputs under `build/`
-- receiver build target lowered to **macOS 11+** for Intel testing
+- remembers extended-display arrangement per receiver
 
-If you want the current stable packaged version, use the latest release. If you want the newest in-repo functionality before the next release is cut, build from source.
+## Requirements
+
+- Sender: Apple Silicon Mac (M1 or later), macOS 14 Sonoma or later
+- Receiver: Intel or Apple Silicon Mac, macOS 11 Big Sur or later
+- Thunderbolt cable
+- see also [Hardware.md](docs/Hardware.md) for more hardware information
+
+## Download
+
+**[→ Download latest release (pre-built apps, no Xcode needed)](https://github.com/swellweb/targetBridge/releases/latest)**
+
+- `TargetBridge-arm64.app.zip` — Sender (for Apple Silicon Macs)
+- `TargetBridge-Receiver-arm64.app.zip` — Apple Silicon Receiver (use machine as monitor for sender)
+- `TargetBridge-Receiver-x86_64.app.zip` — Intel Receiver (use machine as monitor for sender)
+
+Unzip and double-click. On first launch, grant Screen Recording permission to the sender.
+
+If you build from source, app outputs go into `build/` folder.
+
+> **"App is damaged" warning?** macOS quarantines unsigned apps downloaded from the browser. Run this in Terminal, then try again:
+> ```bash
+> xattr -cr ~/Downloads/TargetBridge-arm64.app
+> xattr -cr ~/Downloads/TargetBridge-Receiver-arm64.app
+> xattr -cr ~/Downloads/TargetBridge-Receiver-x86_64.app
+> ```
+
+## Extended Desktop
+
+For an extended desktop, choose `Extended display` on the sender before connecting. After the virtual display appears, open macOS **System Settings → Displays → Arrange** on the sender Mac and position the external display where you want it. TargetBridge now reuses the last saved extended-display position for the same receiver when possible.
+
+If the receiver does not fill the iMac panel or the cursor/desktop feels scaled incorrectly, select the external TargetBridge display in macOS Display Settings and choose the matching resolution. For the 27-inch 5K iMac path, use a high-clarity stream profile such as `Crisp` or `5K` with the external display set to the matching 2560 × 1440 HiDPI mode.
+
+## Quick start
+
+- Italian: [docs/QuickStart-IT.md](docs/QuickStart-IT.md)
+- English: [docs/QuickStart-EN.md](docs/QuickStart-EN.md)
+- 中文: [docs/QuickStart-ZH.md](docs/QuickStart-ZH.md)
 
 ## Screenshots
 
@@ -40,77 +78,3 @@ If you want the current stable packaged version, use the latest release. If you 
 
 **macOS Displays — mirrored desktop target:**
 ![TargetBridge mirrored desktop](images/display-mirror.png)
-
-## Download
-
-**[→ Download latest release (pre-built apps, no Xcode needed)](https://github.com/swellweb/targetBridge/releases/latest)**
-
-- `TargetBridge.app.zip` — Sender (Apple Silicon Mac, **requires macOS 14 Sonoma or later**)
-- `TargetBridge-Receiver.app.zip` — Receiver (Intel iMac, **requires macOS 11 Big Sur or later**)
-
-Unzip and double-click. On first launch, grant Screen Recording permission to the sender.
-
-If you build from source, app outputs go into:
-
-- `build/TargetBridge.app`
-- `build/TargetBridge Receiver.app`
-
-> **"App is damaged" warning?** macOS quarantines unsigned apps downloaded from the browser. Run this in Terminal, then try again:
-> ```bash
-> xattr -cr ~/Downloads/TargetBridge.app
-> xattr -cr ~/Downloads/TargetBridge\ Receiver.app
-> ```
-
-> **Pre-built receiver crashing?** Make sure you downloaded v1.2.0 or later — older builds required Homebrew or macOS 14. Re-download from the [latest release](https://github.com/swellweb/targetBridge/releases/latest).
-
-## Requirements
-
-- Sender: Apple Silicon Mac (M1 or later), macOS 14 Sonoma or later, TB3/4/5
-- Receiver: Intel iMac 2017 or later, macOS 11 Big Sur or later, TB3/4/5
-- Thunderbolt 3/4/5 cable (backwards compatible)
-
-## Stream profiles
-
-- `Standard · 2560 × 1440` — conservative baseline
-- `Smooth · 2560 × 1440 @ 60` — lower latency motion
-- `Smooth+ · 3200 × 1800 @ 60` — sharper motion profile
-- `Crisp · 3840 × 2160 @ 48` — clearer text with HEVC
-- `5K · 5120 × 2880 @ 48` — native iMac 5K stream with HEVC
-
-The sender can stream either an extended virtual display or a mirror of the sender display.
-
-## Direct multi-iMac support
-
-The current codebase adds a direct multi-iMac path for setups like:
-
-```text
-iMac1 <--TB-- MacBook --TB--> iMac2
-```
-
-Current behavior:
-
-- one sender app can manage multiple receiver sessions
-- each session can bind to its own Thunderbolt Bridge interface
-- discovered receivers can be selected from the UI instead of typing the IP manually
-- the main target is `extended + extended`; multi-session mirror mode still needs more testing
-
-This is the basis for the next release and should still be considered pre-release functionality until a new packaged version is published.
-
-## Extended Desktop
-
-For an extended desktop, choose `Extended display` on the sender before connecting. After the virtual display appears, open macOS **System Settings → Displays → Arrange** on the sender Mac and position the external display where you want it. TargetBridge now reuses the last saved extended-display position for the same receiver when possible.
-
-If the receiver does not fill the iMac panel or the cursor/desktop feels scaled incorrectly, select the external TargetBridge display in macOS Display Settings and choose the matching resolution. For the 27-inch 5K iMac path, use a high-clarity stream profile such as `Crisp` or `5K` with the external display set to the matching 2560 × 1440 HiDPI mode.
-
-## Projects
-
-- `TargetBridge-Sender`
-- `TargetBridge-Receiver`
-
-## Quick start
-
-- Italian: `docs/QuickStart-IT.md`
-- English: `docs/QuickStart-EN.md`
-- 中文: `docs/QuickStart-ZH.md`
-
-When building from source, the sender can also discover compatible receivers automatically in the UI and prefill their Thunderbolt Bridge IP.
