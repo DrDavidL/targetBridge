@@ -504,6 +504,14 @@ enum TBDisplaySenderL10n {
         }
     }
 
+    static func verboseDisplayLogging(_ language: TBDisplaySenderLanguage) -> String {
+        switch language {
+        case .italian: return "Diagnostica display in Console (verboso)"
+        case .english: return "Log virtual display events to Console (verbose)"
+        case .german: return "Virtuelle Display-Ereignisse in Console protokollieren (ausführlich)"
+        }
+    }
+
     static func showMainWindow(_ language: TBDisplaySenderLanguage) -> String {
         switch language {
         case .italian: return "Mostra finestra principale"

@@ -31,27 +31,24 @@ final class TBDisplaySenderService: ObservableObject {
             objectWillChange.send()
         }
     }
-    @Published var preventDisplaySleep: Bool = {
-        if UserDefaults.standard.object(forKey: "fd.tbdisplaysender.preventDisplaySleep") == nil {
-            return true
-        }
-        return UserDefaults.standard.bool(forKey: "fd.tbdisplaysender.preventDisplaySleep")
-    }() {
+    @Published var preventDisplaySleep: Bool = UserDefaults.standard.bool(forKey: "fd.tbdisplaysender.preventDisplaySleep") {
         didSet {
             UserDefaults.standard.set(preventDisplaySleep, forKey: "fd.tbdisplaysender.preventDisplaySleep")
             sessions.forEach { $0.preventDisplaySleep = preventDisplaySleep }
             objectWillChange.send()
         }
     }
-    @Published var autoRestartOnWake: Bool = {
-        if UserDefaults.standard.object(forKey: "fd.tbdisplaysender.autoRestartOnWake") == nil {
-            return true
-        }
-        return UserDefaults.standard.bool(forKey: "fd.tbdisplaysender.autoRestartOnWake")
-    }() {
+    @Published var autoRestartOnWake: Bool = UserDefaults.standard.bool(forKey: "fd.tbdisplaysender.autoRestartOnWake") {
         didSet {
             UserDefaults.standard.set(autoRestartOnWake, forKey: "fd.tbdisplaysender.autoRestartOnWake")
             sessions.forEach { $0.autoRestartOnWake = autoRestartOnWake }
+            objectWillChange.send()
+        }
+    }
+    @Published var verboseDisplayLogging: Bool = UserDefaults.standard.bool(forKey: "fd.tbdisplaysender.verboseDisplayLogging") {
+        didSet {
+            UserDefaults.standard.set(verboseDisplayLogging, forKey: "fd.tbdisplaysender.verboseDisplayLogging")
+            sessions.forEach { $0.verboseDisplayLogging = verboseDisplayLogging }
             objectWillChange.send()
         }
     }
@@ -98,7 +95,8 @@ final class TBDisplaySenderService: ObservableObject {
             language: language,
             largeCursor: largeCursor,
             preventDisplaySleep: preventDisplaySleep,
-            autoRestartOnWake: autoRestartOnWake
+            autoRestartOnWake: autoRestartOnWake,
+            verboseDisplayLogging: verboseDisplayLogging
         )
         if let previous = sessions.last {
             session.capturePreset = previous.capturePreset

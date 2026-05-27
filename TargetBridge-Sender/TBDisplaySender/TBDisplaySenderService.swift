@@ -238,12 +238,12 @@ enum TBDisplayCaptureSource: String, CaseIterable, Identifiable {
         }
     }
 
-    var virtualDisplayIdentity: TBVirtualDisplayIdentity {
+    func virtualDisplayIdentity(for profile: TBMonitorDisplayProfile) -> TBVirtualDisplayIdentity {
         switch self {
         case .desktopMirror:
             return .desktopMirror
         case .extendedDesktop:
-            return .extendedDesktop()
+            return .extendedDesktop(for: profile)
         }
     }
 }
@@ -397,8 +397,9 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
     init(
         language: TBDisplaySenderLanguage,
         largeCursor: Bool,
-        preventDisplaySleep: Bool = true,
-        autoRestartOnWake: Bool = true
+        preventDisplaySleep: Bool = false,
+        autoRestartOnWake: Bool = false,
+        verboseDisplayLogging: Bool = false
     ) {
         self.statusText = TBDisplaySenderStatusState.ready.text(language)
         self.receiverPanelText = TBDisplaySenderL10n.waitingReceiverProfile(language)
@@ -407,6 +408,7 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
         self.largeCursor = largeCursor
         self.preventDisplaySleep = preventDisplaySleep
         self.autoRestartOnWake = autoRestartOnWake
+        self.verboseDisplayLogging = verboseDisplayLogging
         self.streamResolutionText = TBDisplaySenderL10n.streamSummary(
             preset: .standard1440p,
             source: .desktopMirror,
@@ -414,12 +416,19 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
         )
         super.init()
         registerWakeObservers()
+        registerDisplayReconfigurationCallback()
     }
 
     deinit {
         for token in wakeObservers {
             NSWorkspace.shared.notificationCenter.removeObserver(token)
             DistributedNotificationCenter.default().removeObserver(token)
+        }
+        if displayReconfigurationCallbackRegistered {
+            CGDisplayRemoveReconfigurationCallback(
+                Self.displayReconfigurationCallback,
+                Unmanaged.passUnretained(self).toOpaque()
+            )
         }
     }
 
@@ -447,8 +456,17 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
         }
     }
     @Published var largeCursor: Bool
-    @Published var preventDisplaySleep: Bool = true
-    @Published var autoRestartOnWake: Bool = true
+    @Published var preventDisplaySleep: Bool = false
+    @Published var autoRestartOnWake: Bool = false
+    @Published var verboseDisplayLogging: Bool = false {
+        didSet {
+            if verboseDisplayLogging {
+                startVerboseLoggingTimer()
+            } else {
+                stopVerboseLoggingTimer()
+            }
+        }
+    }
     @Published var capturePreset: TBDisplayCapturePreset = .standard1440p {
         didSet {
             if !isStreaming {
@@ -496,6 +514,18 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
     private var lastCursorPacket: TBMonitorCursor?
     nonisolated(unsafe) private var wakeObservers: [NSObjectProtocol] = []
     private var isRestartingCaptureAfterWake = false
+    nonisolated(unsafe) private var displayReconfigurationCallbackRegistered = false
+    private var verboseLoggingTimer: Timer?
+
+    nonisolated(unsafe) private static let displayReconfigurationCallback: CGDisplayReconfigurationCallBack = { displayID, flags, userInfo in
+        guard let userInfo else { return }
+        let service = Unmanaged<TBDisplaySenderSession>.fromOpaque(userInfo).takeUnretainedValue()
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                service.handleDisplayReconfiguration(displayID: displayID, flags: flags)
+            }
+        }
+    }
 
     private final class CaptureDelegate: NSObject, SCStreamOutput, SCStreamDelegate {
         var onFrame: ((CMSampleBuffer) -> Void)?
@@ -976,7 +1006,7 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
             guard self.session.create(
                 from: profile,
                 refreshRate: self.capturePreset.virtualDisplayRefreshRate,
-                identity: self.captureSource.virtualDisplayIdentity
+                identity: self.captureSource.virtualDisplayIdentity(for: profile)
             ) else {
                 self.setStatus(.virtualDisplayCreationFailed)
                 self.stop(resetStatusTo: nil)
@@ -1703,6 +1733,77 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
                 queue: nil,
                 using: handler
             )
+        )
+    }
+
+    private func registerDisplayReconfigurationCallback() {
+        guard !displayReconfigurationCallbackRegistered else { return }
+        let context = Unmanaged.passUnretained(self).toOpaque()
+        let result = CGDisplayRegisterReconfigurationCallback(Self.displayReconfigurationCallback, context)
+        displayReconfigurationCallbackRegistered = (result == .success)
+        if verboseDisplayLogging {
+            startVerboseLoggingTimer()
+        }
+    }
+
+    private func handleDisplayReconfiguration(displayID: CGDirectDisplayID, flags: CGDisplayChangeSummaryFlags) {
+        let isOurs = session.displayID != kCGNullDirectDisplay && displayID == session.displayID
+        guard verboseDisplayLogging || isOurs else { return }
+        var parts: [String] = []
+        if flags.contains(.addFlag) { parts.append("add") }
+        if flags.contains(.removeFlag) { parts.append("remove") }
+        if flags.contains(.enabledFlag) { parts.append("enabled") }
+        if flags.contains(.disabledFlag) { parts.append("disabled") }
+        if flags.contains(.mirrorFlag) { parts.append("mirror") }
+        if flags.contains(.unMirrorFlag) { parts.append("unMirror") }
+        if flags.contains(.movedFlag) { parts.append("moved") }
+        if flags.contains(.setMainFlag) { parts.append("setMain") }
+        if flags.contains(.setModeFlag) { parts.append("setMode") }
+        if flags.contains(.beginConfigurationFlag) { parts.append("beginConfiguration") }
+        if flags.contains(.desktopShapeChangedFlag) { parts.append("desktopShapeChanged") }
+        let flagText = parts.isEmpty ? "none" : parts.joined(separator: "|")
+        NSLog(
+            "TargetBridge: display reconfiguration displayID=%u ours=%@ flags=%@ online=[%@]",
+            displayID,
+            isOurs ? "yes" : "no",
+            flagText,
+            onlineDisplayIDs().map(String.init).joined(separator: ",")
+        )
+        if isOurs, session.displayID != kCGNullDirectDisplay {
+            displayStateText = describeDisplayState(for: session.displayID)
+        }
+    }
+
+    private func startVerboseLoggingTimer() {
+        stopVerboseLoggingTimer()
+        guard verboseDisplayLogging else { return }
+        let timer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.logStreamSnapshot()
+            }
+        }
+        verboseLoggingTimer = timer
+        logStreamSnapshot()
+    }
+
+    private func stopVerboseLoggingTimer() {
+        verboseLoggingTimer?.invalidate()
+        verboseLoggingTimer = nil
+    }
+
+    private func logStreamSnapshot() {
+        guard verboseDisplayLogging else { return }
+        let online = onlineDisplayIDs()
+        let virtualOnline = online.contains(session.displayID)
+        NSLog(
+            "TargetBridge: stream snapshot streaming=%@ fps=%d virtualID=%u online=%@ pendingPackets=%d inFlightEncode=%d ptsSeq=%lld",
+            isStreaming ? "yes" : "no",
+            senderFPS,
+            session.displayID,
+            virtualOnline ? "yes" : "no",
+            pendingVideoPackets,
+            inFlightEncodeFrames,
+            displayStreamFrameSequence
         )
     }
 
