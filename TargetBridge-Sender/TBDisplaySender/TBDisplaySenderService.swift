@@ -516,6 +516,8 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
     private var isRestartingCaptureAfterWake = false
     nonisolated(unsafe) private var displayReconfigurationCallbackRegistered = false
     private var verboseLoggingTimer: Timer?
+    private var lastCaptureFrameAt: Date = Date()
+    private var captureHealthWatchdog: Timer?
 
     nonisolated(unsafe) private static let displayReconfigurationCallback: CGDisplayReconfigurationCallBack = { displayID, flags, userInfo in
         guard let userInfo else { return }
@@ -793,6 +795,7 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
         cursorTimer = nil
         fpsTimer?.invalidate()
         fpsTimer = nil
+        stopCaptureWatchdog()
         if let directDisplayStream {
             directDisplayStream.stop()
             self.directDisplayStream = nil
@@ -1109,6 +1112,7 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
                 reason: "TargetBridge streaming active"
             )
             startFPSTimer()
+            startCaptureWatchdog()
             return true
         } catch {
             if error.localizedDescription.hasPrefix("no virtual SCDisplay available") {
@@ -1147,6 +1151,7 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
             reason: "TargetBridge streaming active"
         )
         startFPSTimer()
+        startCaptureWatchdog()
         return true
     }
 
@@ -1433,6 +1438,7 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
     }
 
     private func encode(_ sampleBuffer: CMSampleBuffer) {
+        lastCaptureFrameAt = Date()
         guard let encoder = vtEncoder,
               let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)
         else { return }
@@ -1446,6 +1452,7 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
     }
 
     fileprivate func encodeDisplaySurface(_ surface: IOSurface, displayTime: UInt64) {
+        lastCaptureFrameAt = Date()
         guard let encoder = vtEncoder else { return }
         if capturePreset.dropsBeforeEncodeWhenBacklogged,
            (pendingVideoPackets >= capturePreset.maxPendingVideoPackets ||
@@ -1791,6 +1798,29 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
         verboseLoggingTimer = nil
     }
 
+    private func startCaptureWatchdog() {
+        captureHealthWatchdog?.invalidate()
+        lastCaptureFrameAt = Date()
+        captureHealthWatchdog = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.checkCaptureHealth()
+            }
+        }
+    }
+
+    private func stopCaptureWatchdog() {
+        captureHealthWatchdog?.invalidate()
+        captureHealthWatchdog = nil
+    }
+
+    private func checkCaptureHealth() {
+        guard isStreaming, activeProfile != nil, !isRestartingCaptureAfterWake else { return }
+        let elapsed = Date().timeIntervalSince(lastCaptureFrameAt)
+        guard elapsed >= 8.0 else { return }
+        NSLog("TargetBridge: capture watchdog tripped — %.1fs since last frame, soft restart", elapsed)
+        scheduleCaptureRestart(reason: "watchdog (\(Int(elapsed))s without frames)", delaySeconds: 0.5)
+    }
+
     private func logStreamSnapshot() {
         guard verboseDisplayLogging else { return }
         let online = onlineDisplayIDs()
@@ -1844,6 +1874,7 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
         cursorTimer = nil
         fpsTimer?.invalidate()
         fpsTimer = nil
+        stopCaptureWatchdog()
         if let directDisplayStream {
             directDisplayStream.stop()
             self.directDisplayStream = nil

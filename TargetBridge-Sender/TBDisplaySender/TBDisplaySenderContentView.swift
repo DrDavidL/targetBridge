@@ -235,7 +235,11 @@ private struct TBDisplaySenderSessionCard: View {
                         }
                         .onChange(of: session.selectedReceiverID) { _, newValue in
                             guard let receiver = service.discoveredReceivers.first(where: { $0.id == newValue }) else { return }
-                            service.applyDiscoveredReceiver(receiver, to: session)
+                            // Defer the mutation past SwiftUI's current view-update phase to avoid
+                            // "Publishing changes from within view updates is not allowed".
+                            DispatchQueue.main.async {
+                                service.applyDiscoveredReceiver(receiver, to: session)
+                            }
                         }
                         .disabled(session.isConnected || session.isStreaming)
                     }
