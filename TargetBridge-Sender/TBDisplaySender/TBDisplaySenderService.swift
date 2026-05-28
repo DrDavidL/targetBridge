@@ -518,6 +518,7 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
     private var verboseLoggingTimer: Timer?
     private var lastCaptureFrameAt: Date = Date()
     private var captureHealthWatchdog: Timer?
+    private var lastEncodedDisplayPTS: CMTime?
 
     nonisolated(unsafe) private static let displayReconfigurationCallback: CGDisplayReconfigurationCallBack = { displayID, flags, userInfo in
         guard let userInfo else { return }
@@ -839,6 +840,7 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
         pendingVideoPackets = 0
         inFlightEncodeFrames = 0
         displayStreamFrameSequence = 0
+        lastEncodedDisplayPTS = nil
         baselineDisplayIDs = []
         cursorDisplayID = kCGNullDirectDisplay
         lastCursorPacket = nil
@@ -1135,6 +1137,7 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
         guard vtEncoder != nil else { return false }
 
         displayStreamFrameSequence = 0
+        lastEncodedDisplayPTS = nil
         streamResolutionText = TBDisplaySenderL10n.streamSummary(preset: preset, source: captureSource, language: language)
 
         let directCapture = TBDirectDisplayStreamCapture(service: self, queue: connectionQueue)
@@ -1478,7 +1481,20 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
         let pixelBuffer = unmanagedPixelBuffer.takeRetainedValue()
 
         displayStreamFrameSequence += 1
-        let pts = CMTime(value: displayStreamFrameSequence, timescale: Int32(capturePreset.expectedFrameRate))
+        // Derive PTS from the frame's actual capture time. CGDisplayStream
+        // delivers frames irregularly (event-driven on screen changes), so the
+        // previous frame-counter PTS — which assumed an exact nominal frame
+        // rate — drifted away from real wall-clock time and the drift compounded
+        // over long sessions, pacing the receiver progressively wrong. displayTime
+        // is in mach-absolute units, same host clock the SCStream path already uses.
+        var pts = displayTime != 0
+            ? CMClockMakeHostTimeFromSystemUnits(displayTime)
+            : CMClockGetTime(CMClockGetHostTimeClock())
+        if let last = lastEncodedDisplayPTS, CMTimeCompare(pts, last) <= 0 {
+            // VTCompressionSession requires strictly increasing PTS.
+            pts = CMTimeAdd(last, CMTime(value: 1, timescale: 600))
+        }
+        lastEncodedDisplayPTS = pts
         encode(pixelBuffer: pixelBuffer, presentationTimeStamp: pts, using: encoder)
     }
 
@@ -1897,6 +1913,7 @@ final class TBDisplaySenderSession: NSObject, ObservableObject, Identifiable, @u
         vtEncoderRef = nil
         isStreaming = false
         displayStreamFrameSequence = 0
+        lastEncodedDisplayPTS = nil
         senderFPS = 0
         sentSnapshot = sentFrames
         pendingVideoPackets = 0
